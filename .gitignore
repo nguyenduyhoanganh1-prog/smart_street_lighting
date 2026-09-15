@@ -1,0 +1,23 @@
+# ESP-IDF build output
+build/
+managed_components/
+sdkconfig.old
+
+# Secrets (WiFi credentials, MQTT credentials)
+.env
+*.env
+secrets.h
+sdkconfig.secrets
+**/main/secrets.*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
+
+# Large ML data and intermediate models
+ml/data/raw/
+ml/**/*.h5
+ml/**/checkpoints/
+
