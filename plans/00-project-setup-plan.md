@@ -37,7 +37,7 @@ làm ít nhưng chạy chắc, sau đó mới mở rộng.
 | Nhận diện | **FOMO (Edge Impulse)**, 2 class `nguoi` / `xe` | Chỉ cần tâm vật thể để biết zone; nhẹ, nhanh, không cần Internet |
 | Ra quyết định | Luật (state machine) | Không cần nhãn, an toàn, dễ giải thích |
 | Ngày/đêm | BH1750: ngày tắt đèn + không chạy AI; đêm đèn nền 20% | Tiết kiệm điện; đèn nền giúp camera nhìn thấy vật thể |
-| Dashboard | **HiveMQ Cloud (MQTT miễn phí) + trang web tĩnh trên GitHub Pages** | Xem từ xa, không cần máy chủ bật liên tục |
+| Dashboard | **HiveMQ Cloud (MQTT miễn phí) + trang web tĩnh trên GitHub Pages** | Xem từ xa, không cần máy chủ bật liên tục. *Đã cân nhắc Blynk IoT (dễ, có app điện thoại) nhưng không chọn: khó hiện ảnh cảnh báo, gói miễn phí giới hạn số datastream (không đủ cho điện năng 4 bóng), thư viện chủ yếu cho Arduino* |
 | Ảnh | **Chỉ gửi khi có cảnh báo vật dừng** | Tiết kiệm băng thông, quota |
 | Cấu trúc | `firmware/streetlight-node/` (1 app ESP-IDF) + `dashboard/` (web tĩnh) | |
 
@@ -92,6 +92,7 @@ Adapter 5 V (−) ────────────────────�
 |---|---|---|---|
 | `streetlight/online` | board → web | ✓ | `online` / `offline` (LWT) |
 | `streetlight/state` | board → web | ✓ | JSON mỗi `TELEMETRY_INTERVAL`: ngày/đêm, lux, chế độ, độ sáng 4 đèn, số người/xe, zone có vật, fps |
+| `streetlight/config` | board → web | ✓ | JSON **giá trị cài đặt đang áp dụng**: `lux_night`, `lux_day`, `fade_up_ms`, `fade_down_ms`, `night_start`, `night_end` (gửi lại mỗi khi thay đổi) |
 | `streetlight/energy` | board → web | ✓ | JSON mỗi `TELEMETRY_INTERVAL`: **từng bóng** dòng, áp, công suất, điện năng hôm nay, tổng, % tiết kiệm; và tổng 4 bóng |
 | `streetlight/energy/history` | board → web | ✓ | JSON mỗi giờ: điện năng từng bóng trong **24 giờ gần nhất** (24 giá trị × 4 bóng) |
 | `streetlight/alert` | board → web | ✓ | JSON cảnh báo đang mở: `{id, type, zone, class, since, status}`; payload rỗng khi đã đóng |
@@ -100,9 +101,11 @@ Adapter 5 V (−) ────────────────────�
 | `streetlight/cmd/lamp` | web → board | | `{"lamp": 3, "duty": 60}` |
 | `streetlight/cmd/force_night` | web → board | | `true` / `false` |
 | `streetlight/cmd/alert_ack` | web → board | | `{"id": ...}` |
+| `streetlight/cmd/config` | web → board | | JSON chỉ chứa **các tham số muốn đổi**, vd `{"lux_night": 40}` hoặc `{"fade_down_ms": 5000}`; `{"reset": true}` để về mặc định |
 
 - Dùng **retained** để mở dashboard lúc nào cũng thấy ngay giá trị mới nhất, kể cả biểu đồ 24 giờ, mà không cần server lưu trữ.
-- **Board kiểm tra mọi lệnh nhận được** (lamp 1–4, duty 0–100, JSON hợp lệ), sai thì bỏ qua.
+- **Board kiểm tra mọi lệnh nhận được** (lamp 1–4, duty 0–100, JSON hợp lệ, tham số cài đặt trong giới hạn), sai thì bỏ qua.
+- **Tham số cài đặt** được board kiểm tra, **lưu NVS** (khởi động lại vẫn giữ), rồi publish lại `streetlight/config`. Dashboard luôn hiển thị theo `streetlight/config`, nên slider phản ánh **giá trị board đang dùng thật**.
 - **Chế độ chỉnh tay tự hết hạn** sau `MANUAL_TIMEOUT` (vd 10 phút) → quay về tự động.
 
 ### Bảo mật
@@ -120,18 +123,22 @@ Adapter 5 V (−) ────────────────────�
 - **Ban đêm, không có vật thể** → tất cả đèn **20%**.
 - **Người** ở zone K → K−1, K, K+1 **100%**, giữ lâu. **Xe** ở zone K → K và zone phía trước **100%**, tắt nhanh.
 - **Vật dừng lâu** → đèn quanh đó 100% + **cảnh báo kèm ảnh trên dashboard**.
-- **Camera/model lỗi** → tất cả đèn 100% + cảnh báo. **BH1750 lỗi** → coi là đêm + cảnh báo.
+- **Chuyển độ sáng:** tăng nhanh (~200 ms), giảm từ từ (~3 s); đang giảm mà có vật thể mới thì tăng lại ngay từ mức hiện tại.
+- **Camera/model hoặc BH1750 lỗi** → **chế độ theo giờ** + cảnh báo: trước 18:00 (từ 06:00) chỉ cảnh báo, đèn tắt; từ 18:00 đến 06:00 tất cả đèn 100%.
+  Giờ lấy từ SNTP; chưa có giờ thì sáng 100%.
 - Chi tiết và tham số: mục 3 của [01-ai-models-and-dataset.md](01-ai-models-and-dataset.md).
 
 ## 5. Dashboard
 
 | Khu vực | Nội dung |
 |---|---|
-| Trạng thái | Online/offline, ngày/đêm + lux, chế độ tự động/tay, fps nhận diện |
+| Trạng thái | Online/offline, ngày/đêm, chế độ tự động/tay/theo giờ, fps nhận diện |
+| **Cường độ ánh sáng** | **Lux hiện tại** (số lớn, cập nhật mỗi 5 s), thanh ngang có đánh dấu vị trí lux hiện tại so với 2 ngưỡng, biểu đồ lux vài phút gần nhất (vẽ trong lúc trang mở) |
 | 4 đèn | Độ sáng hiện tại từng đèn, zone đang có người/xe |
 | **Điện năng từng bóng** | Bảng 4 bóng: **công suất hiện tại (mW), dòng (mA), điện năng hôm nay (mWh), tổng tích luỹ (mWh), % tiết kiệm**; dòng tổng cộng |
 | **Biểu đồ 24 giờ** | Biểu đồ cột điện năng theo giờ, chọn xem từng bóng hoặc cả 4 bóng chồng lên nhau |
 | Điều khiển | Công tắc tự động/tay, slider độ sáng từng đèn, nút "ép chế độ đêm" |
+| **Cài đặt** | **Slider ngưỡng lux** chuyển sang đêm / về ngày; **slider thời gian sáng dần** và **tối dần**; ô chọn giờ bắt đầu/kết thúc ban đêm (chế độ theo giờ); nút "Khôi phục mặc định" |
 | Cảnh báo | **Chỉ hiện khi có cảnh báo**: loại, zone, thời gian, **ảnh** (với vật dừng), nút "Đã xử lý" |
 
 - HTML + JavaScript thuần; `mqtt.js` (kết nối MQTT qua WebSocket) và `Chart.js` (vẽ biểu đồ) tải từ CDN.
@@ -181,3 +188,6 @@ Mỗi giai đoạn xong là **có sản phẩm chạy được**, hết thời g
 - 2026-09-15: 2 nguồn riêng (sạc dự phòng cho ESP32, adapter 5 V cho đèn, nối chung GND); mạch đóng cắt ULN2003.
 - 2026-09-15: **giảm còn 4 đèn**; thêm **4 × INA219 đo dòng/áp từng bóng**, dashboard hiện điện năng từng bóng + biểu đồ 24 giờ;
   xe → sáng zone K và **1** zone phía trước (vì chỉ còn 4 zone).
+- 2026-09-15: đã cân nhắc Blynk, giữ HiveMQ + web tự viết. Camera/model hoặc BH1750 lỗi → **chế độ theo giờ** (06–18h chỉ cảnh báo, 18–06h sáng 100%).
+  Chuyển độ sáng tăng nhanh, giảm từ từ.
+- 2026-09-15: dashboard thêm **hiển thị lux**, **slider ngưỡng lux**, **slider thời gian sáng dần/tối dần**, giờ ban đêm; topic `streetlight/config` và `streetlight/cmd/config`.

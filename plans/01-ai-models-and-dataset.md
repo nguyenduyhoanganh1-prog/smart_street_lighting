@@ -45,13 +45,21 @@ Ba mức độ sáng: **TẮT (0%)**, **NỀN (`BASE_DIM` = 20%)**, **SÁNG (`FU
 
 ```
 Dashboard đang chỉnh tay (và chưa quá MANUAL_TIMEOUT)?  → dùng lệnh tay
-BH1750 không đọc được?                                  → coi là BAN ĐÊM + cảnh báo
 
+CHẾ ĐỘ THEO GIỜ — khi BH1750 lỗi HOẶC camera/FOMO lỗi:
+    Luôn gửi cảnh báo (1 lần khi phát hiện, sau đó nhắc lại mỗi ALERT_REPEAT)
+    Chưa có giờ (chưa đồng bộ SNTP)                → SÁNG tất cả 100%
+    Giờ hiện tại từ NIGHT_END đến trước NIGHT_START
+      (mặc định 06:00 → 18:00)                     → TẮT tất cả, chỉ cảnh báo
+    Giờ hiện tại từ NIGHT_START đến trước NIGHT_END
+      (mặc định 18:00 → 06:00)                     → SÁNG tất cả 100%
+    Cảm biến/camera chạy lại bình thường           → thoát chế độ theo giờ, gửi "đã khôi phục"
+
+BÌNH THƯỜNG — BH1750 và camera/FOMO đều chạy tốt:
 BAN NGÀY (lux > LUX_DAY liên tục DAY_NIGHT_HOLD):
-    → TẮT tất cả đèn, dừng camera và FOMO
+    → TẮT tất cả đèn, dừng FOMO (camera chỉ tự kiểm tra mỗi CAMERA_CHECK_INTERVAL)
 
 BAN ĐÊM (lux < LUX_NIGHT liên tục DAY_NIGHT_HOLD):
-    Camera/FOMO lỗi (không có kết quả quá VISION_TIMEOUT) → SÁNG tất cả + cảnh báo
     Mặc định: tất cả đèn NỀN 20%
     Xét TỪNG vật thể, lấy HỢP các zone cần sáng:
       nguoi ở zone K               → SÁNG K−1, K, K+1, giữ HOLD_PERSON sau khi rời zone
@@ -64,8 +72,41 @@ BAN ĐÊM (lux < LUX_NIGHT liên tục DAY_NIGHT_HOLD):
 - Chỉ có 4 zone nên xe chỉ sáng thêm **1** zone phía trước; sáng 2 zone phía trước thì gần như bật cả đường, mất ý nghĩa tiết kiệm.
 - **Hướng di chuyển:** so zone của vật ở 2 lần suy luận liên tiếp. Zone đầu/cuối (1 và 4) không có zone phía trước thì bỏ qua.
 
+### Chuyển độ sáng: tăng nhanh, giảm từ từ
+
+| Hướng | Thời gian chuyển | Lý do |
+|---|---|---|
+| **Tăng** (vd 20% → 100%, 0% → 100%) | `FADE_UP_MS` ≈ **200 ms** | Người/xe vừa vào zone là có đủ ánh sáng ngay; vẫn mềm hơn bật phụt |
+| **Giảm** (vd 100% → 20%, 20% → 0%) | `FADE_DOWN_MS` ≈ **3 s** | Không làm mắt người đi đường bị "tối sầm" đột ngột; nếu FOMO lỡ 1–2 frame thì đèn cũng không chớp tắt |
+
+- Áp dụng cho **mọi thay đổi độ sáng**: luật zone, ngày/đêm, chế độ theo giờ, và cả lệnh chỉnh tay từ dashboard.
+- Dùng tính năng fade phần cứng của LEDC (`ledc_set_fade_with_time` + `ledc_fade_start` không chờ), CPU không phải tự tăng giảm từng bước.
+- **Đang giảm dần mà có vật thể mới vào** (cần tăng) → **dừng ngay lần giảm đang chạy** (`ledc_fade_stop`), đọc độ sáng hiện tại (`ledc_get_duty`) rồi **tăng nhanh từ mức đó**, không đợi giảm xong.
+- Đang tăng mà có lệnh giảm → cho tăng xong (chỉ 200 ms) rồi mới giảm dần, tránh đèn giật.
+- Điện năng lúc giảm dần tốn thêm rất ít (vài giây mỗi lần); INA219 đo điện năng thật nên đã tính đủ phần này.
+- Dataset ảnh nên có một ít ảnh **đang giảm sáng dở dang** (mức giữa 20% và 100%); augmentation độ sáng của Edge Impulse cũng giúp phần này.
+
+### Chế độ theo giờ (khi cảm biến hoặc camera lỗi)
+
+- **Quy tắc được xét liên tục theo giờ hiện tại**, không phải theo giờ lúc hỏng. Ví dụ camera hỏng lúc 15h: từ 15h đến 18h chỉ gửi cảnh báo, đèn tắt; **đến 18h mà vẫn chưa sửa thì tự bật 100%**; đến 06h sáng thì tắt.
+- **Phát hiện lỗi:**
+  - BH1750: không đọc được sau vài lần thử liên tiếp.
+  - Camera/FOMO ban đêm: không có kết quả quá `VISION_TIMEOUT`.
+  - Camera ban ngày: FOMO không chạy ban ngày, nên camera **tự kiểm tra** mỗi `CAMERA_CHECK_INTERVAL` (chụp 1 ảnh + chạy FOMO 1 lần). Nhờ vậy hỏng trước 18h vẫn biết để gửi cảnh báo.
+- **Nguồn giờ:** đồng bộ **SNTP** qua Internet khi khởi động, múi giờ Việt Nam (UTC+7). ESP32 tự giữ giờ trong lúc còn cấp điện, kể cả khi sau đó mất Internet.
+  - Nếu ESP32 **khởi động lại mà không có Internet** thì không biết giờ → **SÁNG tất cả 100%** (an toàn) + cảnh báo khi có mạng lại.
+  - *Tuỳ chọn:* thêm module đồng hồ thời gian thực **DS3231** (có pin nuôi, I2C, dùng chung bus) để giữ giờ khi mất cả điện lẫn mạng.
+- **Lưu ý:** mùa đông trời có thể tối trước 18h. Khi cảm biến/camera lỗi thì hệ thống không còn cách nào biết trời tối sớm, nên `NIGHT_START` là tham số, **chỉnh được từ dashboard** (vd 17:30).
+
 ### Chế độ ngày/đêm (BH1750)
 - **Hai ngưỡng có trễ (hysteresis):** `LUX_NIGHT` < `LUX_DAY`, và phải giữ liên tục `DAY_NIGHT_HOLD` mới đổi chế độ, tránh đèn bật tắt liên tục khi ánh sáng dao động.
+  - Đang **ngày** → chỉ chuyển **đêm** khi lux < `LUX_NIGHT` đủ lâu.
+  - Đang **đêm** → chỉ chuyển **ngày** khi lux > `LUX_DAY` đủ lâu.
+  - Lux **nằm giữa** hai ngưỡng → **giữ nguyên chế độ hiện tại**.
+- **Lúc vừa khởi động** (chưa có chế độ trước đó) mà lux nằm giữa hai ngưỡng:
+  - Đã có giờ (SNTP) → chọn theo giờ: trong `NIGHT_START`–`NIGHT_END` là **đêm**, ngoài khoảng đó là **ngày**.
+  - Chưa có giờ → chọn **đêm** (thà sáng thừa còn hơn tối).
+  - Lux < `LUX_NIGHT` hoặc > `LUX_DAY` thì chọn theo lux như bình thường.
 - **BH1750 không được nhìn thấy LED của mô hình.** Nếu không sẽ lặp: tối → bật đèn → cảm biến thấy sáng → tưởng ngày → tắt đèn...
   Lắp hướng lên trên, có tấm che phía dưới, đặt cao nhất trên mô hình.
 - **Hiệu chỉnh:** đo lux lúc bật đèn phòng ("ngày") và tắt đèn phòng ("đêm"), đặt ngưỡng ở khoảng giữa.
@@ -76,8 +117,9 @@ BAN ĐÊM (lux < LUX_NIGHT liên tục DAY_NIGHT_HOLD):
 | Cảnh báo | Khi nào | Đèn | Dashboard hiện |
 |---|---|---|---|
 | **Vật dừng lâu** | Tâm vật di chuyển < `STOP_EPS` trong `STOP_TIME` | SÁNG K−1, K, K+1 | Loại, zone, thời gian dừng, **ảnh**, nút "Đã xử lý" |
-| Camera/FOMO lỗi | Không có kết quả quá `VISION_TIMEOUT` | SÁNG tất cả | Loại lỗi, thời điểm |
-| BH1750 lỗi | Không đọc được cảm biến | Coi là đêm | Loại lỗi, thời điểm |
+| Camera/FOMO lỗi | Ban đêm: không có kết quả quá `VISION_TIMEOUT`. Ban ngày: tự kiểm tra thất bại | **Theo giờ:** 06:00–18:00 tắt (chỉ cảnh báo); 18:00–06:00 sáng 100% | Loại lỗi, thời điểm, "đang chạy chế độ theo giờ" |
+| BH1750 lỗi | Không đọc được cảm biến | **Theo giờ** (như trên) | Loại lỗi, thời điểm, "đang chạy chế độ theo giờ" |
+| Mất giờ | Khởi động lại mà chưa đồng bộ được SNTP | Sáng 100% | Gửi khi có mạng lại |
 | INA219 lỗi | Không đọc được module của bóng i | Giữ nguyên luật | `Bóng i: không đo được điện năng` |
 
 - **Ảnh chỉ gửi khi có cảnh báo vật dừng**: chụp toàn khung hình, vẽ khung đánh dấu vật thể, nén JPEG, publish retained lên `streetlight/alert/image`. Đèn đang sáng 100% nên ảnh rõ.
@@ -126,13 +168,40 @@ Dòng qua LED bật tắt 5000 lần/giây. Nếu INA219 đọc một mẫu nhan
 1. Tắt đèn phòng, ép chế độ tay, bật bóng i ở 100% trong 10 s, lấy trung bình công suất → `P100_i`, lưu NVS.
 2. Kiểm tra chéo: đo dòng bóng i bằng **đồng hồ vạn năng** (không PWM, 100%), so với INA219; lệch > 10% thì xem lại calibration/shunt.
 
+### Chỉnh tham số từ dashboard
+
+| Tham số | Điều khiển trên dashboard | Giới hạn | Bước | Mặc định |
+|---|---|---|---|---|
+| `LUX_NIGHT` — dưới mức này đủ lâu thì chuyển **đêm** | Slider | 0–1000 lux | 5 lux | ~30 *(hiệu chỉnh)* |
+| `LUX_DAY` — trên mức này đủ lâu thì về **ngày** | Slider | 0–1000 lux | 5 lux | ~100 *(hiệu chỉnh)* |
+| `FADE_UP_MS` — thời gian **sáng dần** | Slider | 0–2000 ms | 50 ms | 200 ms |
+| `FADE_DOWN_MS` — thời gian **tối dần** | Slider | 0–10000 ms | 250 ms | 3000 ms |
+| `NIGHT_START` / `NIGHT_END` | Ô chọn giờ (HH:MM) | 00:00–23:59 | 1 phút | 18:00 / 06:00 |
+
+**Quy tắc kiểm tra trên board** (không tin hoàn toàn dữ liệu từ web):
+- Giá trị ngoài giới hạn → **kẹp về giới hạn** gần nhất.
+- **`LUX_DAY` phải lớn hơn `LUX_NIGHT` ít nhất `LUX_MIN_GAP` (20 lux)**, để giữ vùng trễ (hysteresis) chống đèn bật tắt liên tục.
+  Người dùng kéo vi phạm → board tự đẩy ngưỡng còn lại ra cho đủ khoảng cách, publish giá trị thật, dashboard hiện thông báo
+  "Ngưỡng về ngày đã được chỉnh thành X lux để cách ngưỡng đêm ít nhất 20 lux".
+- `NIGHT_START` không được trùng `NIGHT_END`.
+
+**Cách áp dụng:**
+- Ngưỡng lux: áp dụng **ngay**. Chế độ ngày/đêm vẫn phải giữ `DAY_NIGHT_HOLD` mới đổi, nên kéo slider không làm đèn giật.
+- Thời gian sáng dần/tối dần: áp dụng cho **lần chuyển độ sáng tiếp theo**; lần đang chạy dở giữ nguyên.
+- Dashboard **chỉ gửi lệnh khi thả tay khỏi slider** (sự kiện `change`), không gửi liên tục lúc đang kéo (`input`),
+  để tránh gửi hàng trăm tin MQTT và ghi NVS quá nhiều lần (flash có giới hạn số lần ghi).
+- Board **chỉ ghi NVS khi giá trị thật sự thay đổi**.
+- Nút **"Khôi phục mặc định"** gửi `{"reset": true}` → board nạp lại giá trị mặc định.
+- Bên cạnh slider lux luôn hiển thị **lux hiện tại**, để người dùng biết nên đặt ngưỡng ở đâu (vd đang tối đo được 12 lux, đang sáng đo được 300 lux → đặt ngưỡng đêm ~40, ngày ~120).
+
 ### Tham số
 
 | Tham số | Đề xuất | Ghi chú |
 |---|---|---|
 | `BASE_DIM` | 20% | Kiểm tra camera nhận diện được ở mức này; tối quá thì tăng lên 30% |
 | `FULL` | 100% | |
-| `LUX_NIGHT` / `LUX_DAY` | ~30 / ~100 lux *(hiệu chỉnh)* | |
+| `LUX_NIGHT` / `LUX_DAY` | ~30 / ~100 lux *(hiệu chỉnh)* | **Chỉnh từ dashboard** |
+| `LUX_MIN_GAP` | 20 lux | Khoảng cách tối thiểu giữa 2 ngưỡng |
 | `DAY_NIGHT_HOLD` | 10 s (demo) | Ngoài đời nên 5–10 phút |
 | `HOLD_PERSON` | 5 s | |
 | `HOLD_VEHICLE` | 2 s | |
@@ -140,7 +209,13 @@ Dòng qua LED bật tắt 5000 lần/giây. Nếu INA219 đọc một mẫu nhan
 | `STOP_EPS` | 1 ô lưới FOMO | |
 | `FOMO_SCORE_MIN` | 0.5 *(hiệu chỉnh)* | Bỏ tâm vật thể có score thấp |
 | `VISION_TIMEOUT` | 2 s | |
+| `NIGHT_START` / `NIGHT_END` | 18:00 / 06:00 | Chế độ theo giờ; chỉnh được từ dashboard |
+| `TIMEZONE` | UTC+7 (giờ Việt Nam) | Cho SNTP |
+| `CAMERA_CHECK_INTERVAL` | 5 phút | Tự kiểm tra camera ban ngày |
+| `ALERT_REPEAT` | 30 phút | Nhắc lại cảnh báo lỗi chưa được sửa |
 | `MANUAL_TIMEOUT` | 10 phút | Chế độ tay tự quay về tự động |
+| `FADE_UP_MS` | 200 ms | Thời gian tăng sáng — **chỉnh từ dashboard** |
+| `FADE_DOWN_MS` | 3000 ms | Thời gian giảm sáng — **chỉnh từ dashboard** |
 | `PWM_FREQ` | 5 kHz | Tránh sọc trên ảnh camera; INA219 lấy trung bình đủ nhiều chu kỳ |
 | `ENERGY_SAMPLE_INTERVAL` | 100 ms | Chu kỳ đọc INA219 |
 | `ENERGY_SAVE_INTERVAL` | 10 phút | Chu kỳ lưu NVS |
@@ -200,3 +275,8 @@ Quá tối thì tăng `BASE_DIM` **trước khi** chụp dataset thật. **Kiể
 - 2026-09-15: nguồn đèn là adapter 5 V riêng.
 - 2026-09-15: **giảm còn 4 đèn / 4 zone**; xe sáng K + 1 zone phía trước; **đo điện năng thật từng bóng bằng INA219**
   thay cho ước tính, thêm lịch sử 24 giờ.
+- 2026-09-15: camera/FOMO hoặc BH1750 lỗi → **chế độ theo giờ**: 06:00–18:00 chỉ cảnh báo (đèn tắt), 18:00–06:00 sáng 100%;
+  thêm tự kiểm tra camera ban ngày; mất giờ thì sáng 100%.
+- 2026-09-15: chuyển độ sáng **tăng nhanh (~200 ms), giảm từ từ (~3 s)**, áp dụng cho mọi thay đổi độ sáng.
+- 2026-09-15: ngưỡng lux, thời gian sáng dần/tối dần, giờ ban đêm **chỉnh được từ dashboard** (kiểm tra giới hạn, lưu NVS).
+- 2026-09-15: làm rõ vùng trễ (lux giữa 2 ngưỡng giữ nguyên chế độ) và quy tắc chọn chế độ lúc khởi động.

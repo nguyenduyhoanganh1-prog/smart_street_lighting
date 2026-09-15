@@ -22,7 +22,7 @@ Mức 1: **1 board ESP32-S3 có camera** vừa chạy AI vừa điều khiển *
 
 - Model 1: FOMO (Edge Impulse), int8, 2 class `nguoi` / `xe`. Input: ROI mặt đường thu nhỏ về 96×96 hoặc 160×160.
 - Hậu xử lý: tracking tâm vật thể, zone (4), hướng, phát hiện vật dừng (gửi ảnh JPEG khi có cảnh báo).
-- Luật: ngày tắt đèn và dừng AI; đêm nền 20%; người → K−1..K+1 100%; xe → K + 1 zone phía trước 100%; camera lỗi → tất cả 100%.
+- Luật: ngày tắt đèn và dừng AI; đêm nền 20%; người → K−1..K+1 100%; xe → K + 1 zone phía trước 100%; camera/model hoặc BH1750 lỗi → chế độ theo giờ (06–18h tắt + cảnh báo, 18–06h sáng 100%, giờ từ SNTP UTC+7).
 - Chi tiết: plans/01-ai-models-and-dataset.md.
 
 > File này được các rule chung ở ~/.claude/rules/ecc/embedded/*.md tham chiếu tới
