@@ -97,11 +97,25 @@ export function useStation() {
       }
       const now = Date.now()
       if (topic === T.online) {
-        if (text === "online" || text === "offline") markOnline(text === "online")
+        if (text === "online" || text === "offline") {
+          const online = text === "online"
+
+          markOnline(online)
+
+          if (online) {
+            lastSeen.current = now
+            setLastAt(now)
+          } else {
+            lastSeen.current = 0
+          }
+        }
       } else if (topic === T.state) {
         const s = json() as StatePayload | null
         if (!s) return
         lastSeen.current = now
+        setLastAt(now)
+        markOnline(true)
+
         if (s.duty) model.current.setDuty(s.duty)
         setState(s)
         if (typeof s.lux === "number") setLux((a) => [...a, { t: now, v: [s.lux!] }].slice(-SERIES_MAX))
@@ -170,6 +184,7 @@ export function useStation() {
     prev.current = { fault: [0, 0, 0, 0], night: null, mode: null, alertId: null, online: null }
     lastSeen.current = 0
     cfgRef.current = null
+    pendingCfg.current = null
     setBoardOnline(null)
     setLastAt(null)
     setState(null)
@@ -180,6 +195,7 @@ export function useStation() {
     setImage(null)
     setCurrent([])
     setLux([])
+    setNotice(null)
     setSource(null)
   }, [])
 
@@ -198,7 +214,15 @@ export function useStation() {
       setSource("mqtt")
       setStatus("connecting")
       setError(null)
-      const { default: mqtt } = await import("mqtt")
+      let mqtt: typeof import("mqtt").default
+
+      try {
+        ; ({ default: mqtt } = await import("mqtt"))
+      } catch {
+        setStatus("error")
+        setError("Không thể tải thư viện MQTT. Hãy kiểm tra kết nối mạng và tải lại trang.")
+        return
+      }
       // Nhập tên miền broker là đủ; nhập cả URL ws:// hoặc wss:// (vd broker thử trong mạng LAN) thì dùng nguyên URL đó
       const raw = l.host.trim()
       const full = /^wss?:\/\//.test(raw)

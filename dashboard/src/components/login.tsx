@@ -50,7 +50,24 @@ export function LoginScreen({ onConnect, onSim, status, error }: { onConnect: (l
               } catch {
                 /* không lưu được thì thôi */
               }
-              onConnect(form)
+              const host = form.host.trim()
+              const username = form.username.trim()
+
+              if (
+                !host ||
+                !username ||
+                !Number.isInteger(form.port) ||
+                form.port < 1 ||
+                form.port > 65535
+              ) {
+                return
+              }
+
+              onConnect({
+                ...form,
+                host,
+                username,
+              })
             }}
           >
             <CardContent className="space-y-4">
@@ -65,7 +82,21 @@ export function LoginScreen({ onConnect, onSim, status, error }: { onConnect: (l
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="port">Cổng</Label>
-                  <Input id="port" type="number" inputMode="numeric" value={form.port} onChange={(e) => setForm({ ...form, port: +e.target.value })} />
+                  <Input
+                    id="port"
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={65535}
+                    required
+                    value={form.port}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        port: Number(e.target.value),
+                      })
+                    }
+                  />
                 </div>
               </div>
               <div className="space-y-1.5">
@@ -80,7 +111,9 @@ export function LoginScreen({ onConnect, onSim, status, error }: { onConnect: (l
               {error && <p role="alert" className="rounded-lg bg-bad-soft px-3 py-2 text-sm font-medium text-destructive">{error}</p>}
               <p className="flex items-start gap-2 text-xs text-muted-foreground">
                 <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                Kết nối mã hoá (WebSocket/TLS, cổng 8084). Mật khẩu không lưu trong code hay trên máy, chỉ dùng cho lần mở trang này.
+                Mặc định sử dụng WebSocket/TLS với EMQX Cloud
+                (cổng 8084). Mật khẩu chỉ được giữ trong bộ nhớ
+                của trang trong phiên hiện tại. Mật khẩu không lưu trong code hay trên máy, chỉ dùng cho lần mở trang này.
               </p>
             </CardContent>
             <CardFooter className="flex flex-col gap-3 pt-2">

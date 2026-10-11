@@ -10,6 +10,16 @@ export function Street({ lamps: ls, state, stale }: { lamps: Lamp[] | null; stat
   const lamps = ls ?? []
   const totalP = lamps.reduce((a, l) => a + l.p, 0)
   const zones = state?.zones ?? []
+  const activeZones = [
+    ...new Set(
+      zones.filter(
+        (zone) =>
+          Number.isInteger(zone) &&
+          zone >= 1 &&
+          zone <= 4,
+      ),
+    ),
+  ]
   const onCount = lamps.filter((l) => l.duty > 0 && !l.fault).length
   const night = state?.night
 
@@ -112,7 +122,7 @@ export function Street({ lamps: ls, state, stale }: { lamps: Lamp[] | null; stat
         })}
 
         {/* Vùng đang có người/xe (camera + AI phát hiện) */}
-        {zones.filter((z) => z >= 1 && z <= 4).map((z) => (
+        {activeZones.map((z) => (
           <g key={`z${z}`} transform={`translate(${POSTS[z - 1] + 50}, ${GROUND - 14})`}>
             <rect x="-34" y="-9" width="68" height="18" rx="9" fill="var(--color-sodium)" opacity="0.9" />
             <text x="0" y="4" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#1d1203" className="font-sans">CÓ NGƯỜI/XE</text>
@@ -150,7 +160,7 @@ export function Street({ lamps: ls, state, stale }: { lamps: Lamp[] | null; stat
           <span className="text-xl font-black tnum leading-tight">{!ls ? "–" : totalP >= 1000 ? `${fmt(totalP / 1000, 2)} W` : `${fmt(totalP, 0)} mW`}</span>
         </div>
       </div>
-      
+
       {stale && (
         <div className="absolute inset-0 bg-night-2/60 backdrop-blur-sm flex items-center justify-center">
           <div className="flex items-center gap-2 bg-destructive/90 text-white px-5 py-2.5 rounded-full font-bold shadow-lg shadow-destructive/20 animate-pulse">

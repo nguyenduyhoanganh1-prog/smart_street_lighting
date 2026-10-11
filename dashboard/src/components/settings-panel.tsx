@@ -44,6 +44,25 @@ export function SettingsPanel({ config, state, st, disabled }: { config: Config 
   const c = config ?? { lux_night: 30, lux_day: 100, fade_up_ms: 200, fade_down_ms: 3000, night_start: "18:00", night_end: "06:00" }
   const commit = (k: NumKey, v: number) => v !== c[k] && st.cmd.setConfig({ [k]: v })
   const [times, setTimes] = useState({ night_start: c.night_start, night_end: c.night_end })
+  const commitTime = (
+    key: "night_start" | "night_end",
+  ) => {
+    const value = times[key]
+
+    if (!value || value === c[key]) return
+
+    const other =
+      key === "night_start"
+        ? times.night_end
+        : times.night_start
+
+    // Không gửi cấu hình giờ bắt đầu = giờ kết thúc.
+    if (value === other) return
+
+    st.cmd.setConfig({
+      [key]: value,
+    })
+  }
   useEffect(() => setTimes({ night_start: c.night_start, night_end: c.night_end }), [c.night_start, c.night_end])
   const luxNow = state?.lux != null ? <> Lux hiện tại: <b className="text-foreground">{fmt(state.lux, 0)} lux</b>.</> : null
 
@@ -75,15 +94,38 @@ export function SettingsPanel({ config, state, st, disabled }: { config: Config 
         <div className="flex flex-wrap items-end gap-3">
           <div className="space-y-1">
             <Label htmlFor="ns" className="text-xs">Bắt đầu</Label>
-            <Input id="ns" type="time" className="w-32 tnum" value={times.night_start} disabled={off}
-              onChange={(e) => setTimes({ ...times, night_start: e.target.value })}
-              onBlur={() => times.night_start && times.night_start !== c.night_start && st.cmd.setConfig({ night_start: times.night_start })} />
+            <Input
+              id="ns"
+              type="time"
+              className="w-32 tnum"
+              value={times.night_start}
+              disabled={off}
+              onChange={(e) =>
+                setTimes({
+                  ...times,
+                  night_start: e.target.value,
+                })
+              }
+              onBlur={() => commitTime("night_start")}
+            />
           </div>
           <div className="space-y-1">
             <Label htmlFor="ne" className="text-xs">Kết thúc</Label>
-            <Input id="ne" type="time" className="w-32 tnum" value={times.night_end} disabled={off}
-              onChange={(e) => setTimes({ ...times, night_end: e.target.value })}
-              onBlur={() => times.night_end && times.night_end !== c.night_end && st.cmd.setConfig({ night_end: times.night_end })} />
+            id="ne" type="time" className="w-32 tnum" value={times.night_end} disabled={off}
+            <Input
+              id="ne"
+              type="time"
+              className="w-32 tnum"
+              value={times.night_end}
+              disabled={off}
+              onChange={(e) =>
+                setTimes({
+                  ...times,
+                  night_end: e.target.value,
+                })
+              }
+              onBlur={() => commitTime("night_end")}
+            />
           </div>
           {times.night_start === times.night_end && <p className="text-xs text-destructive pb-2">Giờ bắt đầu và kết thúc không được trùng nhau</p>}
         </div>
