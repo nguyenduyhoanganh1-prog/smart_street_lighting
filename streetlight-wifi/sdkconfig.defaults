@@ -1,0 +1,18 @@
+# Same module as streetlight-node: Freenove ESP32-S3 WROOM N16R8 (16 MB flash, 8 MB octal PSRAM).
+# Run `idf.py set-target esp32s3` first. If your module is NOT N16R8, change or
+# remove the flash/PSRAM lines, otherwise the board may fail to boot.
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+
+CONFIG_FREERTOS_HZ=1000
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=6144
+
+# TLS to HiveMQ Cloud: verify the server with the built-in CA bundle
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+
+# HTTP server: room for the request line of /api/cmd/*
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
+CONFIG_HTTPD_MAX_URI_LEN=128

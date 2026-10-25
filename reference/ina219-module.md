@@ -13,7 +13,7 @@
 | Điện áp tải đo được (bus) | 0–26 V DC | Project đo 5 V |
 | Điện áp nuôi module (VCC) | 3–5 V DC | **Project cấp 3.3 V** (xem mục 4) |
 | Sai số | ±1% (gain), lệch offset tối đa 100 µV trong dải −40…85 °C | Với shunt 0.1 Ω, 100 µV ≈ 1 mA sai lệch tối đa → cần hiệu chỉnh/kiểm tra bằng đồng hồ vạn năng |
-| Giao tiếp | I2C | Địa chỉ `0x40`–`0x43` bằng pad A0/A1 |
+| Giao tiếp | I2C | Địa chỉ `0x40`, `0x41`, `0x44`, `0x45` bằng pad A0/A1 |
 | Kích thước | 25.5 × 22.3 mm | |
 
 ## 2. Các chân trên module
@@ -51,12 +51,15 @@ Hàn nối (bridge) 2 nửa của pad bằng một giọt thiếc:
 |---|---|---|---|
 | Bóng 1 | không hàn | không hàn | `0x40` |
 | Bóng 2 | **hàn** | không hàn | `0x41` |
-| Bóng 3 | không hàn | **hàn** | `0x42` |
-| Bóng 4 | **hàn** | **hàn** | `0x43` |
+| Bóng 3 | không hàn | **hàn** | **`0x44`** |
+| Bóng 4 | **hàn** | **hàn** | **`0x45`** |
+
+> Địa chỉ = `0x40 + (A1 × 4) + (A0 × 1)`. Vì vậy **`0x42` và `0x43` không dùng được bằng cách hàn pad**
+> (hai địa chỉ đó chỉ có khi nối A0 vào SDA hoặc SCL). Đây là lỗi trong bản tài liệu trước, đã sửa.
 
 - **Dán nhãn số 1–4 lên từng module ngay sau khi hàn** để khỏi lẫn.
-- Sau khi hàn, chạy chương trình **quét I2C** trên ESP32. Phải thấy đủ `0x23` (BH1750), `0x40`, `0x41`, `0x42`, `0x43`.
-  Thiếu hoặc trùng thì kiểm tra lại mối hàn pad.
+- Sau khi hàn, chạy chương trình **quét I2C** trên ESP32. Phải thấy đủ `0x23` (BH1750), `0x40`, `0x41`, `0x44`, `0x45`.
+  Phải thấy đủ `0x23` (BH1750), `0x40`, `0x41`, `0x44`, `0x45`. Thiếu hoặc trùng thì kiểm tra lại mối hàn pad.
 
 ## 4. Cách nối trong project (4 module)
 

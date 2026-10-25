@@ -28,7 +28,7 @@
 | # | Linh kiện | SL | Dự phòng | Giá tham khảo | Lưu ý khi mua |
 |---|---|---|---|---|---|
 | C1 | Module **BH1750** (cảm biến ánh sáng, I2C) | 1 | 1 | 35–50k/con | Lắp hướng lên, có tấm che, **không nhìn thấy LED mô hình** |
-| C2 | Module **INA219** (đo dòng/áp, I2C, shunt 0.1 Ω) | 4 | 1 | 35–50k/con | Chọn loại **có pad A0, A1** để đặt 4 địa chỉ `0x40–0x43`; có sẵn cầu đấu VIN+/VIN− |
+| C2 | Module **INA219** (đo dòng/áp, I2C, shunt 0.1 Ω) | 4 | 1 | 35–50k/con | Chọn loại **có pad A0, A1** để đặt 4 địa chỉ `0x40`, `0x41`, `0x44`, `0x45`; có sẵn cầu đấu VIN+/VIN− |
 
 **Vì sao không dùng ACS712:** ACS712 (bản 5 A) cho 185 mV/A, nên LED 20 mA chỉ làm điện áp ra thay đổi khoảng 3.7 mV,
 trong khi nhiễu của nó khoảng 21 mV. Ngoài ra nó chỉ đo dòng, và tốn 4 chân ADC. INA219 đo được cả dòng lẫn áp với độ phân giải ~0.1 mA, dùng I2C.

@@ -81,7 +81,7 @@ Adapter 5 V (−) ────────────────────�
 
 - **Bắt buộc nối GND của ESP32 với cực (−) của adapter**; không nối cực (+) 5 V adapter vào chân 5 V của ESP32.
 - **INA219 đặt phía +5 V của từng bóng** (nối tiếp trước điện trở): đo dòng qua shunt 0.1 Ω trên module, đo áp tại VIN−.
-- **Địa chỉ I2C 4 INA219** bằng pad A0/A1: `0x40` (không hàn), `0x41` (A0), `0x42` (A1), `0x43` (A0 + A1). BH1750 là `0x23`, không trùng. Chạy quét I2C để kiểm tra sau khi hàn.
+- **Địa chỉ I2C 4 INA219** bằng pad A0/A1: `0x40` (không hàn), `0x41` (A0), `0x44` (A1), `0x45` (A0 + A1). BH1750 là `0x23`, không trùng. Chạy quét I2C để kiểm tra sau khi hàn.
 - ULN2003 kéo cathode LED xuống GND khi IN mức cao; chân COM (9) để trống; IN5–IN7 nối GND.
 - Điện trở hạn dòng ≈ (5 − Vf_LED − 0.8) / 0.02 ≈ **56–68 Ω** (đo Vf thực tế rồi chọn).
 - **Mỗi bóng 1 điện trở riêng**; anode 4 bóng chung +5 V (qua INA219 riêng), cathode mỗi bóng về 1 chân OUT riêng.

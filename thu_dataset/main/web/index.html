@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Thu dataset</title>
+<style>
+:root{
+  --bg:#f2f5f5; --card:#fff; --fg:#14201e; --muted:#52625f; --line:#c5d1ce;
+  --accent:#0b6b62; --accent-fg:#fff; --danger:#a81f38; --danger-bg:#f9dade;
+  --ok:#0b6b62; --warn:#9a4a06;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0e1615; --card:#16211f; --fg:#e5eeec; --muted:#9bafab; --line:#2c3f3c;
+    --accent:#63d3c6; --accent-fg:#0e1615; --danger:#f592a3; --danger-bg:#3d1a22;
+    --ok:#63d3c6; --warn:#f2b866;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,"Segoe UI",Roboto,sans-serif;
+  padding:16px;max-width:760px;margin-inline:auto}
+h1{font-size:1.3rem;margin:0}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+.pill{font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.pill.ok{color:var(--ok);border-color:var(--ok)}
+.pill.bad{color:var(--danger);border-color:var(--danger)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+.card h2{font-size:.8rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+.preview{width:100%;aspect-ratio:16/9;background:#000;border-radius:8px;display:block;object-fit:contain}
+.note{font-size:12.5px;color:var(--muted);margin:6px 0 0}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.row+.row{margin-top:10px}
+button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px;
+  padding:9px 14px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button:disabled{opacity:.5;cursor:not-allowed}
+button.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:700}
+button.sel{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:700}
+button.big{flex:1;padding:14px}
+input[type=number]{font:inherit;width:90px;padding:8px;border:1px solid var(--line);border-radius:8px;
+  background:var(--bg);color:var(--fg)}
+.banner{background:var(--danger-bg);color:var(--danger);border:1px solid var(--danger);border-radius:8px;
+  padding:10px 12px;margin-bottom:12px;font-weight:600}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.stat b{display:block;font-size:1.25rem;font-variant-numeric:tabular-nums}
+.stat span{font-size:12px;color:var(--muted)}
+.lamp{display:grid;grid-template-columns:64px 1fr 88px;gap:10px;align-items:center;margin:6px 0}
+.lamp input{width:100%;accent-color:var(--accent)}
+.lamp output{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.lamp.master{font-weight:700;padding-bottom:10px;margin-bottom:12px;border-bottom:1px solid var(--line)}
+#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:var(--fg);color:var(--bg);
+  padding:9px 16px;border-radius:999px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;
+  max-width:90vw;text-align:center}
+#toast.show{opacity:1}
+</style>
+</head>
+<body>
+<header>
+  <h1>Thu dataset 640×360</h1>
+  <span id="sdPill" class="pill">SD ...</span>
+</header>
+
+<div id="banner" class="banner" hidden></div>
+
+<section class="card">
+  <h2>Xem trước</h2>
+  <img id="preview" class="preview" alt="Ảnh xem trước từ camera">
+  <p class="note">Ảnh xem trước chỉ là JPEG xám 160×90 để nhìn nhanh. Ảnh lưu trên thẻ nhớ là ảnh xám 8-bit 640×360 (PGM), không nén.</p>
+</section>
+
+<section class="card">
+  <h2>Chụp ảnh</h2>
+  <div class="row" id="labels" role="group" aria-label="Nhãn ảnh">
+    <button type="button" data-label="nguoi">nguoi</button>
+    <button type="button" data-label="xe">xe</button>
+    <button type="button" data-label="nen">nen</button>
+  </div>
+  <div class="row">
+    <button id="shot" type="button" class="primary big">Chụp 1 ảnh</button>
+  </div>
+  <div class="row">
+    <label for="period">Chu kỳ tự động (giây)</label>
+    <input id="period" type="number" min="1" max="3600" step="1" value="5" inputmode="numeric">
+    <button id="autoBtn" type="button" class="big">Bắt đầu tự động</button>
+  </div>
+  <p class="note" id="autoNote">Tự động chụp lần đầu ngay khi bấm, rồi lặp lại theo chu kỳ.</p>
+</section>
+
+<section class="card">
+  <h2>Phiên thu</h2>
+  <div class="stats">
+    <div class="stat"><b id="session">-</b><span>phiên hiện tại</span></div>
+    <div class="stat"><b id="sCount">0</b><span>ảnh trong phiên</span></div>
+    <div class="stat"><b id="total">0</b><span>ảnh từ lúc bật board</span></div>
+    <div class="stat"><b id="free">-</b><span>thẻ SD còn trống</span></div>
+  </div>
+  <p class="note">Ảnh cuối: <span id="last">-</span></p>
+  <div class="row"><button id="newSession" type="button">Bắt đầu phiên mới</button></div>
+  <p class="note">Mỗi phiên là một thư mục riêng. Chia train/test theo phiên, không chia ngẫu nhiên từng ảnh.</p>
+</section>
+
+<section class="card">
+  <h2>Đèn đường</h2>
+  <div id="lamps"></div>
+  <div class="row">
+    <button type="button" data-all="0">Tắt hết</button>
+    <button type="button" data-all="20">Tất cả 20%</button>
+    <button type="button" data-all="100">Tất cả 100%</button>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Phơi sáng</h2>
+  <label class="row"><input id="lock" type="checkbox"> Khoá phơi sáng và độ lợi tự động</label>
+  <p class="note">Bật khi ảnh đã sáng ổn định để độ sáng ảnh không đổi theo mức đèn. Nhớ giữ nguyên khi thu cả phiên.</p>
+</section>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const POLL_MS = 1000;
+const PREVIEW_MS = 400;
+const PREVIEW_RETRY_MS = 1500;
+const LAMP_COUNT = 4;
+let toastTimer = 0;
+let busy = false;
+
+function toast(message) {
+  const el = $("toast");
+  el.textContent = message;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 2800);
+}
+
+async function post(path, body) {
+  const res = await fetch(path, { method: "POST", body: JSON.stringify(body || {}) });
+  let data = null;
+  try { data = await res.json(); } catch (e) { /* not JSON */ }
+  if (!res.ok || !data || data.ok === false) {
+    throw new Error((data && data.error) || "Lỗi " + res.status);
+  }
+  return data;
+}
+
+async function run(action, okMessage) {
+  if (busy) return;
+  busy = true;
+  try {
+    const data = await action();
+    if (okMessage) toast(typeof okMessage === "function" ? okMessage(data) : okMessage);
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    busy = false;
+    poll();
+  }
+}
+
+/* ---------- Lamps ---------- */
+const lampsBox = $("lamps");
+
+/* Master slider: one move sets all four lamps (POST /api/lamp with lamp = 0) */
+const masterRow = document.createElement("div");
+masterRow.className = "lamp master";
+masterRow.innerHTML = '<label for="lampAll">Tổng</label>' +
+  '<input id="lampAll" type="range" min="0" max="100" step="5" value="0">' +
+  '<output id="lampAllOut" for="lampAll">0%</output>';
+lampsBox.appendChild(masterRow);
+const masterSlider = masterRow.querySelector("input");
+masterSlider.addEventListener("input", () => { $("lampAllOut").textContent = masterSlider.value + "%"; });
+masterSlider.addEventListener("change", () =>
+  run(() => post("/api/lamp", { lamp: 0, pct: Number(masterSlider.value) })));
+
+for (let k = 1; k <= LAMP_COUNT; k++) {
+  const row = document.createElement("div");
+  row.className = "lamp";
+  row.innerHTML = '<label for="lamp' + k + '">Đèn ' + k + '</label>' +
+    '<input id="lamp' + k + '" type="range" min="0" max="100" step="5" value="0">' +
+    '<output id="lampOut' + k + '">0%</output>';
+  lampsBox.appendChild(row);
+  const slider = row.querySelector("input");
+  slider.addEventListener("input", () => { $("lampOut" + k).textContent = slider.value + "%"; });
+  slider.addEventListener("change", () =>
+    run(() => post("/api/lamp", { lamp: k, pct: Number(slider.value) })));
+}
+document.querySelectorAll("[data-all]").forEach((btn) =>
+  btn.addEventListener("click", () =>
+    run(() => post("/api/lamp", { lamp: 0, pct: Number(btn.dataset.all) }))));
+
+/* ---------- Controls ---------- */
+document.querySelectorAll("[data-label]").forEach((btn) =>
+  btn.addEventListener("click", () =>
+    run(() => post("/api/label", { label: btn.dataset.label }), "Nhãn: " + btn.dataset.label)));
+
+$("shot").addEventListener("click", () =>
+  run(() => post("/api/capture"), (d) => "Đã lưu " + d.file));
+
+let autoOn = false;
+$("autoBtn").addEventListener("click", () => {
+  if (autoOn) {
+    run(() => post("/api/auto", { on: false }), "Đã dừng tự động");
+  } else {
+    const period = Number($("period").value);
+    run(() => post("/api/auto", { on: true, period: period }), "Đang chụp mỗi " + period + " giây");
+  }
+});
+
+$("newSession").addEventListener("click", () =>
+  run(() => post("/api/session"), "Đã tạo phiên mới"));
+
+$("lock").addEventListener("change", (e) =>
+  run(() => post("/api/exposure", { lock: e.target.checked }),
+      e.target.checked ? "Đã khoá phơi sáng" : "Đã mở khoá phơi sáng"));
+
+/* ---------- Status ---------- */
+function formatMb(mb) {
+  return mb >= 1024 ? (mb / 1024).toFixed(1) + " GB" : mb + " MB";
+}
+
+function render(s) {
+  const sdPill = $("sdPill");
+  sdPill.textContent = s.sd_ok ? "SD " + formatMb(s.sd_total_mb) : "Không có thẻ SD";
+  sdPill.className = "pill " + (s.sd_ok ? "ok" : "bad");
+
+  const banner = $("banner");
+  banner.hidden = !s.error;
+  banner.textContent = s.error || "";
+
+  document.querySelectorAll("[data-label]").forEach((btn) =>
+    btn.classList.toggle("sel", btn.dataset.label === s.label));
+
+  autoOn = s.auto;
+  const autoBtn = $("autoBtn");
+  autoBtn.textContent = s.auto ? "Dừng tự động" : "Bắt đầu tự động";
+  autoBtn.classList.toggle("primary", s.auto);
+  $("period").min = s.min_period;
+  $("period").max = s.max_period;
+  if (document.activeElement !== $("period")) $("period").value = s.period;
+  $("period").disabled = s.auto;
+
+  $("session").textContent = s.session ? "phien_" + String(s.session).padStart(3, "0") : "chưa có";
+  $("sCount").textContent = s.session_count;
+  $("total").textContent = s.total;
+  $("free").textContent = s.sd_ok ? formatMb(s.sd_free_mb) : "-";
+  $("last").textContent = s.last || "-";
+
+  const ready = s.sd_ok && s.cam_ok;
+  $("shot").disabled = !ready;
+  $("autoBtn").disabled = !ready && !s.auto;
+  $("newSession").disabled = !s.sd_ok;
+  $("lock").checked = s.locked;
+
+  s.lamps.forEach((pct, i) => {
+    const slider = $("lamp" + (i + 1));
+    if (document.activeElement !== slider) {
+      slider.value = pct;
+      $("lampOut" + (i + 1)).textContent = pct + "%";
+    }
+  });
+
+  /* Master slider follows the lamps when they all share one level, otherwise it says so */
+  if (document.activeElement !== masterSlider) {
+    const allSame = s.lamps.every((pct) => pct === s.lamps[0]);
+    if (allSame) {
+      masterSlider.value = s.lamps[0];
+      $("lampAllOut").textContent = s.lamps[0] + "%";
+    } else {
+      $("lampAllOut").textContent = "khác nhau";
+    }
+  }
+}
+
+async function poll() {
+  try {
+    const res = await fetch("/api/status", { cache: "no-store" });
+    render(await res.json());
+  } catch (e) {
+    $("banner").hidden = false;
+    $("banner").textContent = "Mất kết nối với board. Kiểm tra WiFi StreetLight-Dataset.";
+  }
+}
+setInterval(poll, POLL_MS);
+poll();
+
+/* ---------- Preview: re-request one JPEG at a time (no endless stream) ---------- */
+function nextFrame() {
+  const loader = new Image();
+  loader.onload = () => { $("preview").src = loader.src; setTimeout(nextFrame, PREVIEW_MS); };
+  loader.onerror = () => setTimeout(nextFrame, PREVIEW_RETRY_MS);
+  loader.src = "/snapshot.jpg?t=" + Date.now();
+}
+nextFrame();
+
+/* ---------- Clock: the board has no internet, so it takes the time of this device ---------- */
+fetch("/api/time", { method: "POST", body: String(Math.floor(Date.now() / 1000)) }).catch(() => {});
+</script>
+</body>
+</html>

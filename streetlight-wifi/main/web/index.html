@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Street Light Tune</title>
+<style>
+:root {
+  --bg: #f4f6f8; --card: #ffffff; --text: #17202a; --muted: #5d6b79; --line: #dde3e9;
+  --accent: #0b6e4f; --accent-soft: #e0f2ea; --warn: #b42318; --warn-soft: #fde8e6;
+  --lamp: #f5b800; --track: #e6ebf0;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1419; --card: #1a222b; --text: #e8edf2; --muted: #9aa9b8; --line: #2b3641;
+    --accent: #3ccf91; --accent-soft: #15382c; --warn: #ff8a80; --warn-soft: #3b1d1b;
+    --lamp: #ffd24d; --track: #2b3641;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, sans-serif; }
+main { max-width: 980px; margin: 0 auto; padding: 16px; }
+header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+h1 { font-size: 20px; margin: 0; }
+h2 { font-size: 16px; margin: 0 0 12px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 600; font-size: 13px; }
+.pill.off { background: var(--warn-soft); color: var(--warn); }
+.pill i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.grid { display: grid; gap: 12px; }
+.g3 { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.g4 { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+.g2 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+section, .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+section { margin-bottom: 12px; }
+.label { color: var(--muted); font-size: 13px; }
+.big { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.val { font-weight: 700; font-variant-numeric: tabular-nums; }
+.hint { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
+.bar { height: 10px; border-radius: 6px; background: var(--track); overflow: hidden; margin: 8px 0 10px; }
+.bar > div { height: 100%; width: 0; background: var(--lamp); transition: width .3s; }
+dl { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; margin: 0; font-size: 13px; }
+dt { color: var(--muted); }
+dd { margin: 0; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+input[type=range] { width: 100%; accent-color: var(--accent); margin: 8px 0 0; height: 28px; }
+input[type=time] { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--text); }
+button { font: inherit; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--text); cursor: pointer; }
+button:disabled, input:disabled { opacity: .5; cursor: not-allowed; }
+.switch { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.switch:last-of-type { border-bottom: 0; }
+.switch input { width: 22px; height: 22px; accent-color: var(--accent); }
+.fault { color: var(--warn); font-weight: 600; font-size: 13px; }
+#toast { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 16px; border-radius: 10px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; }
+#toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Street Light · Chỉnh thông số qua WiFi</h1>
+    <span id="conn" class="pill off"><i></i><span>Đang kết nối...</span></span>
+  </header>
+
+  <section>
+    <h2>Trạng thái</h2>
+    <div class="grid g3">
+      <div class="card"><div class="label">Ánh sáng (BH1750)</div><div class="big" id="lux">–</div></div>
+      <div class="card"><div class="label">Ngày / đêm</div><div class="big" id="night">–</div></div>
+      <div class="card"><div class="label">Chế độ</div><div class="big" id="mode">–</div></div>
+      <div class="card"><div class="label">Giờ trên board</div><div class="big" id="clock">–</div></div>
+      <div class="card"><div class="label">Hoạt động</div><div class="big" id="uptime">–</div></div>
+    </div>
+    <p class="hint" id="sensorWarn"></p>
+  </section>
+
+  <section>
+    <h2>Bốn đèn</h2>
+    <div class="grid g4" id="lamps"></div>
+  </section>
+
+  <section>
+    <h2>Điều khiển</h2>
+    <label class="switch"><span><b>Chỉnh tay độ sáng từng đèn</b><br><span class="hint">Bật để kéo độ sáng ở từng thẻ đèn. Board tự quay về tự động sau 10 phút. <span id="manualLeft"></span></span></span><input type="checkbox" id="manual"></label>
+    <label class="switch"><span><b>Ép chế độ đêm</b><br><span class="hint">Dùng khi trình diễn mà không cần tắt đèn phòng.</span></span><input type="checkbox" id="forceNight"></label>
+  </section>
+
+  <section>
+    <h2>Cài đặt</h2>
+    <div class="grid g2">
+      <div>
+        <div class="row"><b>Ngưỡng chuyển sang đêm</b><span class="val" id="v_lux_night"></span></div>
+        <input type="range" id="lux_night" min="0" max="1000" step="5">
+        <p class="hint">Dưới mức này đủ lâu thì chuyển đêm, đèn nền 20%.</p>
+      </div>
+      <div>
+        <div class="row"><b>Ngưỡng về ngày</b><span class="val" id="v_lux_day"></span></div>
+        <input type="range" id="lux_day" min="0" max="1000" step="5">
+        <p class="hint">Trên mức này đủ lâu thì về ngày, tắt đèn. Phải lớn hơn ngưỡng đêm ít nhất 20 lux.</p>
+      </div>
+      <div>
+        <div class="row"><b>Thời gian sáng dần</b><span class="val" id="v_fade_up_ms"></span></div>
+        <input type="range" id="fade_up_ms" min="0" max="2000" step="50">
+        <p class="hint">Khi có người/xe, đèn tăng sáng trong khoảng này. Áp dụng từ lần chuyển tiếp theo.</p>
+      </div>
+      <div>
+        <div class="row"><b>Thời gian tối dần</b><span class="val" id="v_fade_down_ms"></span></div>
+        <input type="range" id="fade_down_ms" min="0" max="10000" step="250">
+        <p class="hint">Khi người/xe đi qua, đèn giảm sáng từ từ trong khoảng này.</p>
+      </div>
+    </div>
+    <h2 style="margin-top:20px">Giờ ban đêm (chế độ theo giờ)</h2>
+    <p class="hint">Chỉ dùng khi cảm biến ánh sáng lỗi: trong khoảng này đèn sáng 100%, ngoài khoảng này đèn tắt.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:end;margin-top:8px">
+      <label>Bắt đầu<br><input type="time" id="night_start"></label>
+      <label>Kết thúc<br><input type="time" id="night_end"></label>
+      <button id="reset">Khôi phục mặc định</button>
+    </div>
+  </section>
+</main>
+<div id="toast" role="status"></div>
+
+<script>
+"use strict";
+const POLL_MS = 500;
+const LIVE_MS = 60; // minimum gap between live slider commands
+const NUM_KEYS = ["lux_night", "lux_day", "fade_up_ms", "fade_down_ms"];
+const $ = (id) => document.getElementById(id);
+const MODE_TEXT = { auto: "Tự động", manual: "Chỉnh tay", schedule: "Theo giờ" };
+const FAULT_TEXT = { 1: "Đứt bóng / hở mạch", 2: "Quá dòng / chập mạch", 3: "Kẹt ULN2003", 4: "Mất nguồn 5 V", 5: "Lỗi INA219" };
+const I100_MA = 20; // mA of one lamp at 100 %, same as the dashboard
+let lastStatus = null;
+let lampEls = [];
+let toastTimer = 0;
+
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 2500);
+}
+
+async function post(path, body) {
+  try {
+    const r = await fetch(path, { method: "POST", body: typeof body === "string" ? body : JSON.stringify(body) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) toast(j.error || "Lệnh bị từ chối");
+    await poll();
+    return r.ok;
+  } catch (e) {
+    toast("Mất kết nối với board");
+    return false;
+  }
+}
+const cmd = (name, body) => post("/api/cmd/" + name, body);
+
+const fmt = (x, d = 1) => (x === null || x === undefined ? "–" : Number(x).toFixed(d));
+const fmtSec = (ms) => (ms / 1000).toFixed(ms % 1000 ? 2 : 0) + " s";
+const fmtDur = (s) => (s >= 3600 ? Math.floor(s / 3600) + " giờ " : "") + Math.floor((s % 3600) / 60) + " phút";
+const hhmm = (m) => String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
+
+function buildLamps() {
+  const host = $("lamps");
+  for (let id = 1; id <= 4; id++) {
+    const c = document.createElement("div");
+    c.className = "card";
+    c.innerHTML =
+      '<div class="row"><b>Đèn ' + id + '</b><span class="val" data-f="duty"></span></div>' +
+      '<div class="bar"><div data-f="bar"></div></div>' +
+      '<dl><dt>Điện áp</dt><dd data-f="v"></dd><dt>Dòng</dt><dd data-f="i"></dd><dt>Công suất</dt><dd data-f="p"></dd>' +
+      '<dt>Hôm nay</dt><dd data-f="et"></dd><dt>Tổng</dt><dd data-f="eT"></dd><dt>Tiết kiệm</dt><dd data-f="sv"></dd></dl>' +
+      '<p class="fault" data-f="fault"></p>' +
+      '<input type="range" min="0" max="100" step="5" data-f="slider">';
+    host.appendChild(c);
+    const q = (f) => c.querySelector('[data-f="' + f + '"]');
+    const els = { duty: q("duty"), bar: q("bar"), v: q("v"), i: q("i"), p: q("p"), et: q("et"), eT: q("eT"), sv: q("sv"), fault: q("fault"), slider: q("slider") };
+    // Live while dragging: send at most every LIVE_MS and never two requests at once
+    let lastSent = 0;
+    let inflight = false;
+    const sendLive = async () => {
+      inflight = true;
+      lastSent = performance.now();
+      try { await fetch("/api/cmd/lamp", { method: "POST", body: JSON.stringify({ lamp: id, duty: Number(els.slider.value) }) }); }
+      catch (e) { /* the final commit below reports the error */ }
+      inflight = false;
+    };
+    els.slider.addEventListener("input", () => {
+      els.slider.dataset.busy = "1";
+      els.duty.textContent = els.slider.value + " %";
+      if (!inflight && performance.now() - lastSent >= LIVE_MS) sendLive();
+    });
+    els.slider.addEventListener("change", async () => {
+      await cmd("lamp", { lamp: id, duty: Number(els.slider.value) }); // final value, always sent
+      delete els.slider.dataset.busy;
+    });
+    lampEls.push(els);
+  }
+}
+
+// Same fault rules as dashboard/src/lib/protocol.ts detectFault()
+function detectFault(l) {
+  if (!l.ina_ok) return 5;
+  if (l.v < 4) return 4;
+  if (l.i > 100) return 2;
+  if (l.duty >= 10) return l.i < 0.3 * I100_MA * (l.duty / 100) ? 1 : 0;
+  if (l.duty === 0 && l.i > 2) return 3;
+  return 0;
+}
+
+function bindRange(key) {
+  const el = $(key);
+  el.addEventListener("input", () => {
+    el.dataset.busy = "1";
+    $("v_" + key).textContent = key.startsWith("fade") ? fmtSec(Number(el.value)) : el.value + " lux";
+  });
+  el.addEventListener("change", async () => {
+    await cmd("config", { [key]: Number(el.value) });
+    delete el.dataset.busy;
+  });
+}
+
+function bindTime(key) {
+  const el = $(key);
+  el.addEventListener("change", () => el.value && cmd("config", { [key]: el.value }));
+}
+
+function render(s) {
+  lastStatus = s;
+  const conn = $("conn");
+  conn.className = "pill";
+  conn.lastChild.textContent = "Đã kết nối";
+
+  $("lux").textContent = s.lux_ok ? fmt(s.lux, 0) + " lux" : "Lỗi";
+  $("night").textContent = (s.night ? "Đêm" : "Ngày") + (s.force_night ? " (ép)" : "");
+  $("mode").textContent = MODE_TEXT[s.mode] || s.mode;
+  $("clock").textContent = s.time_ok ? hhmm(s.minute) : "Chưa có giờ";
+  $("uptime").textContent = fmtDur(s.uptime);
+  $("sensorWarn").textContent = s.lux_ok ? "" : "Cảm biến BH1750 không trả lời: board đang chạy chế độ theo giờ.";
+  $("sensorWarn").className = s.lux_ok ? "hint" : "hint fault";
+
+  const manual = s.mode === "manual";
+  const mEl = $("manual");
+  if (document.activeElement !== mEl) mEl.checked = manual;
+  const fEl = $("forceNight");
+  if (document.activeElement !== fEl) fEl.checked = s.force_night;
+  $("manualLeft").textContent = manual && s.manual_left ? "Còn " + fmtDur(s.manual_left) + "." : "";
+
+  s.lamps.forEach((l, k) => {
+    const e = lampEls[k];
+    e.duty.textContent = l.duty + " %";
+    e.bar.style.width = l.duty + "%";
+    e.v.textContent = l.ina_ok ? fmt(l.v, 2) + " V" : "–";
+    e.i.textContent = l.ina_ok ? fmt(l.i, 1) + " mA" : "–";
+    e.p.textContent = l.ina_ok ? fmt(l.p, 1) + " mW" : "–";
+    e.et.textContent = fmt(l.e_today, 2) + " mWh";
+    e.eT.textContent = fmt(l.e_total, 2) + " mWh";
+    e.sv.textContent = l.saving === null ? "chưa đủ dữ liệu" : fmt(l.saving, 1) + " %";
+    e.fault.textContent = FAULT_TEXT[detectFault(l)] || "";
+    e.slider.disabled = !manual;
+    if (!e.slider.dataset.busy) e.slider.value = l.duty;
+  });
+
+  NUM_KEYS.forEach((key) => {
+    const el = $(key);
+    el.disabled = false;
+    if (!el.dataset.busy) {
+      el.value = s.config[key];
+      $("v_" + key).textContent = key.startsWith("fade") ? fmtSec(s.config[key]) : s.config[key] + " lux";
+    }
+  });
+  ["night_start", "night_end"].forEach((key) => {
+    if (document.activeElement !== $(key)) $(key).value = s.config[key];
+  });
+}
+
+async function poll() {
+  try {
+    const r = await fetch("/api/status", { cache: "no-store" });
+    render(await r.json());
+  } catch (e) {
+    const conn = $("conn");
+    conn.className = "pill off";
+    conn.lastChild.textContent = "Mất kết nối";
+  }
+}
+
+// The board has no Internet (no SNTP): give it the clock of this device once
+async function syncClock() {
+  try {
+    await fetch("/api/time", { method: "POST", body: String(Math.floor(Date.now() / 1000)) });
+  } catch (e) { /* the next page load tries again */ }
+}
+
+buildLamps();
+NUM_KEYS.forEach(bindRange);
+["night_start", "night_end"].forEach(bindTime);
+$("manual").addEventListener("change", (e) => cmd("mode", e.target.checked ? "manual" : "auto"));
+$("forceNight").addEventListener("change", (e) => cmd("force_night", String(e.target.checked)));
+$("reset").addEventListener("click", () => confirm("Khôi phục cài đặt mặc định?") && cmd("config", { reset: true }));
+syncClock().then(poll);
+setInterval(poll, POLL_MS);
+</script>
+</body>
+</html>

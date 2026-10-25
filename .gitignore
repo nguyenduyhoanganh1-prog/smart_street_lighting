@@ -9,6 +9,8 @@ sdkconfig.old
 secrets.h
 sdkconfig.secrets
 **/main/secrets.*
+secrets.csv
+secrets.bin
 
 # Python
 __pycache__/

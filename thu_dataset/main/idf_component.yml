@@ -1,0 +1,4 @@
+## IDF Component Manager manifest. The camera driver is downloaded on the first build
+## (needs an Internet connection once); later builds use the cached copy in managed_components/.
+dependencies:
+  espressif/esp32-camera: ">=2.0.0"

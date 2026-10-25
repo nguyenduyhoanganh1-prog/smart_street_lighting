@@ -33,8 +33,8 @@ flowchart LR
     ESP -->|3V3 + GND + SDA + SCL| I2C[Bus I2C]
     I2C --- INA1[INA219 #1 0x40]
     I2C --- INA2[INA219 #2 0x41]
-    I2C --- INA3[INA219 #3 0x42]
-    I2C --- INA4[INA219 #4 0x43]
+    I2C --- INA3[INA219 #3 0x44]
+    I2C --- INA4[INA219 #4 0x45]
     I2C --- BH[BH1750 0x23]
 
     RAIL5 --> INA1 --> L1[R + LED 1]
@@ -103,7 +103,7 @@ SCL (GPIO) ───┼──┼──┼──●─┼──┼──┼──
               │  │  │  │ │  │  │  │ │  │  │  │ │  │  │  │ │  │  │  │
              Vcc Gnd Sda Scl ...    ...        ...        VCC GND SDA SCL
              INA219 #1   INA219 #2  INA219 #3  INA219 #4  BH1750
-             (0x40)      (0x41)     (0x42)     (0x43)     (0x23, ADDR → GND)
+             (0x40)      (0x41)     (0x44)     (0x45)     (0x23, ADDR → GND)
 ```
 
 | Chân module | Nối tới | Ghi chú |
@@ -114,7 +114,7 @@ SCL (GPIO) ───┼──┼──┼──●─┼──┼──┼──
 | Scl / SCL | Dây SCL chung | Cả 5 module song song |
 | BH1750 ADDR | GND | Địa chỉ `0x23` |
 
-- **Địa chỉ INA219** (hàn pad "I2C Address"): #1 không hàn `0x40`; #2 hàn A0 `0x41`; #3 hàn A1 `0x42`; #4 hàn cả hai `0x43`.
+- **Địa chỉ INA219** (hàn pad "I2C Address"): #1 không hàn `0x40`; #2 hàn A0 `0x41`; #3 hàn A1 `0x44`; #4 hàn cả hai `0x45`.
 - Tổng chiều dài dây I2C nên < 50 cm, **đi xa dây +5 V đèn**.
 
 ## 6. Mạch đèn (4 bóng)
@@ -268,7 +268,7 @@ Lắp **từng phần, kiểm tra xong mới lắp tiếp**. Mỗi bước nếu
 | 4 | Dây PWM 1 (dây 18) | Chạy PWM 20% / 100% → độ sáng đổi đúng |
 | 5 | BH1750 vào bus I2C (dây 11–15, chỉ BH1750) | Quét I2C thấy `0x23`, đọc được lux |
 | 6 | INA219 #1 vào bus I2C, chèn vào bóng 1 (dây 22–25) | Quét thấy `0x40`; dòng INA219 khớp đồng hồ vạn năng |
-| 7 | Lặp bước 3–6 cho bóng 2, 3, 4 | Quét thấy `0x23, 0x40, 0x41, 0x42, 0x43`; 4 đèn điều khiển riêng được |
+| 7 | Lặp bước 3–6 cho bóng 2, 3, 4 | Quét thấy `0x23, 0x40, 0x41, 0x44, 0x45`; 4 đèn điều khiển riêng được |
 | 8 | Chạy tất cả cùng lúc | Đèn không nhấp nháy bất thường, ESP32 không reset, số đo INA219 ổn định |
 
 ## 10. Những điều cấm và lỗi hay gặp

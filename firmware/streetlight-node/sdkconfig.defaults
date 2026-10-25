@@ -1,0 +1,22 @@
+# Defaults for Freenove ESP32-S3 WROOM N16R8 (16 MB flash, 8 MB octal PSRAM).
+# Run `idf.py set-target esp32s3` first. If your module is NOT N16R8, change or
+# remove the flash/PSRAM lines, otherwise the board may fail to boot.
+
+# Flash: 1.5 MB app partition (WiFi + TLS + MQTT + cJSON exceed the default 1 MB;
+# switch to a custom partition CSV when camera/AI are added)
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+
+# Octal PSRAM (frame buffers, MQTT image buffer)
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+
+# 1 ms tick so short delays (sensor timing) are accurate
+CONFIG_FREERTOS_HZ=1000
+
+# app_main runs the sensor/telemetry loop (snprintf + MQTT publish)
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# TLS to HiveMQ Cloud: verify the server with the built-in CA bundle
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
