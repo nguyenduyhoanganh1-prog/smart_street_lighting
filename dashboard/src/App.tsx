@@ -4,6 +4,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { AlertPanel } from "@/components/alert-panel"
+import { CalibPanel } from "@/components/calib-panel"
 import { ControlPanel } from "@/components/control-panel"
 import { CurrentChart } from "@/components/current-chart"
 import { Energy24h, EnergyTable } from "@/components/energy-panel"
@@ -161,6 +162,17 @@ export default function App() {
             </div>
           </div>
           <div className="lg:col-span-4 space-y-8">
+            <Panel title="Vùng camera">
+              <CalibPanel
+                calib={st.calib}
+                image={st.calibImage}
+                receivedAt={st.calibAt}
+                requestedAt={st.calibRequestedAt}
+                now={now}
+                disabled={disabled}
+                onRecalibrate={st.cmd.recalibrate}
+              />
+            </Panel>
             <Panel title="Cường độ ánh sáng">
               <LightPanel state={state} config={config} series={st.lux} />
             </Panel>

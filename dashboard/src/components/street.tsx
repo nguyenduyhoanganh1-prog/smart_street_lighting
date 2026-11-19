@@ -14,7 +14,11 @@ export function Street({ lamps: ls, state, stale }: { lamps: Lamp[] | null; stat
   const night = state?.night
 
   return (
-    <div className={cn("relative w-full aspect-[16/10] sm:aspect-[21/9] md:aspect-[3/1] bg-gradient-to-b transition-colors duration-1000 flex", night === false ? "from-[#3b6a9a] to-[#1d3553]" : "from-night to-night-2", "items-center justify-center overflow-hidden")}>
+    <div className={cn("relative w-full bg-gradient-to-b transition-colors duration-1000 flex flex-col overflow-hidden", night === false ? "from-[#3b6a9a] to-[#1d3553]" : "from-night to-night-2")}>
+      {/* Khung vẽ đường phố. Thanh thông số nằm DƯỚI khung này, không đè lên các cột đèn */}
+      {/* overflow-hidden + svg absolute: hình vẽ luôn nằm TRONG khung này, không lấn xuống thanh thông số
+          (trước đây svg tự tính chiều cao nên mặt đường và nhãn CÓ NGƯỜI/XE bị thanh thông số che) */}
+      <div className="relative w-full aspect-[16/10] sm:aspect-[21/9] md:aspect-[3/1] overflow-hidden">
       {/* Background nhấp nháy sao/mây */}
       <div className="absolute inset-0 opacity-30 pointer-events-none">
         <div className="absolute top-4 left-10 text-white/40"><Stars size={24} /></div>
@@ -26,7 +30,7 @@ export function Street({ lamps: ls, state, stale }: { lamps: Lamp[] | null; stat
         viewBox="0 0 900 250"
         preserveAspectRatio="xMidYMax meet"
         className={cn(
-          "w-full h-full text-night-fg drop-shadow-md",
+          "absolute inset-0 w-full h-full text-night-fg drop-shadow-md",
           stale && "opacity-50 grayscale transition-all duration-1000"
         )}
       >
@@ -114,7 +118,7 @@ export function Street({ lamps: ls, state, stale }: { lamps: Lamp[] | null; stat
         {/* Vùng đang có người/xe (camera + AI phát hiện) */}
         {zones.filter((z) => z >= 1 && z <= 4).map((z) => (
           <g key={`z${z}`} transform={`translate(${POSTS[z - 1] + 50}, ${GROUND - 14})`}>
-            <rect x="-34" y="-9" width="68" height="18" rx="9" fill="var(--color-sodium)" opacity="0.9" />
+            <rect x="-46" y="-9" width="92" height="18" rx="9" fill="var(--color-sodium)" opacity="0.9" />
             <text x="0" y="4" textAnchor="middle" fontSize="10" fontWeight="bold" fill="#1d1203" className="font-sans">CÓ NGƯỜI/XE</text>
           </g>
         ))}
@@ -133,8 +137,18 @@ export function Street({ lamps: ls, state, stale }: { lamps: Lamp[] | null; stat
         </defs>
       </svg>
 
-      {/* Thông số tổng overlay */}
-      <div className="absolute top-3 left-3 sm:top-auto sm:bottom-4 sm:left-4 bg-night/80 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl border border-white/10 text-night-fg flex gap-3 sm:gap-6 shadow-2xl">
+      {stale && (
+        <div className="absolute inset-0 bg-night-2/60 backdrop-blur-sm flex items-center justify-center">
+          <div className="flex items-center gap-2 bg-destructive/90 text-white px-5 py-2.5 rounded-full font-bold shadow-lg shadow-destructive/20 animate-pulse">
+            <AlertTriangle className="h-5 w-5" />
+            ĐANG CHỜ DỮ LIỆU TỪ BOARD...
+          </div>
+        </div>
+      )}
+      </div>
+
+      {/* Thông số tổng: dưới khung đường phố, canh giữa */}
+      <div className="mx-auto mt-1 mb-3 sm:mb-4 bg-night/80 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl border border-white/10 text-night-fg flex gap-3 sm:gap-6 shadow-2xl">
         <div className="flex flex-col">
           <span className="text-[10px] uppercase font-bold text-night-muted tracking-wider">{night === false ? "Ban ngày" : night ? "Ban đêm" : "Ánh sáng"}</span>
           <span className="text-xl font-black tnum leading-tight">{state?.lux == null ? "–" : `${fmt(state.lux, 0)} lux`}</span>
@@ -150,15 +164,6 @@ export function Street({ lamps: ls, state, stale }: { lamps: Lamp[] | null; stat
           <span className="text-xl font-black tnum leading-tight">{!ls ? "–" : totalP >= 1000 ? `${fmt(totalP / 1000, 2)} W` : `${fmt(totalP, 0)} mW`}</span>
         </div>
       </div>
-      
-      {stale && (
-        <div className="absolute inset-0 bg-night-2/60 backdrop-blur-sm flex items-center justify-center">
-          <div className="flex items-center gap-2 bg-destructive/90 text-white px-5 py-2.5 rounded-full font-bold shadow-lg shadow-destructive/20 animate-pulse">
-            <AlertTriangle className="h-5 w-5" />
-            ĐANG CHỜ DỮ LIỆU TỪ BOARD...
-          </div>
-        </div>
-      )}
     </div>
   )
 }

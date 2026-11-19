@@ -4,7 +4,7 @@ import type { MqttClient } from "mqtt"
 import { LAMP_NAMES } from "@/config"
 import {
   ALERT_TEXT, CLASS_TEXT, createLampModel, FAULT_TEXT, MODE_TEXT, T, toMs,
-  type AlertPayload, type Config, type HistoryPayload, type Lamp, type StatePayload,
+  type AlertPayload, type CalibPayload, type Config, type HistoryPayload, type Lamp, type StatePayload,
 } from "@/lib/protocol"
 import { createSimBoard, type SimBoard } from "@/lib/sim"
 
@@ -53,6 +53,10 @@ export function useStation() {
   const [history24, setHistory24] = useState<HistoryPayload | null>(null)
   const [alert, setAlert] = useState<AlertPayload | null>(null)
   const [image, setImage] = useState<string | null>(null)
+  const [calib, setCalib] = useState<CalibPayload | null>(null) // lần tìm đường gần nhất
+  const [calibAt, setCalibAt] = useState<number | null>(null) // lúc trình duyệt nhận được nó
+  const [calibImage, setCalibImage] = useState<string | null>(null)
+  const [calibRequestedAt, setCalibRequestedAt] = useState<number | null>(null)
   const [current, setCurrent] = useState<SeriesPoint[]>([])
   const [lux, setLux] = useState<SeriesPoint[]>([])
   const [log, setLog] = useState<LogEntry[]>(loadLog)
@@ -156,6 +160,13 @@ export function useStation() {
         prev.current.alertId = id
       } else if (topic === T.image) {
         setImage(text ? (text.startsWith("data:") ? text : `data:image/jpeg;base64,${text}`) : null)
+      } else if (topic === T.calibImage) {
+        setCalibImage(text ? (text.startsWith("data:") ? text : `data:image/jpeg;base64,${text}`) : null)
+      } else if (topic === T.calib) {
+        const c = json() as CalibPayload | null
+        if (!c || (c.state !== "found" && c.state !== "not_found")) return
+        setCalib(c)
+        setCalibAt(now)
       }
     },
     [addLog, markOnline],
@@ -178,6 +189,10 @@ export function useStation() {
     setHistory24(null)
     setAlert(null)
     setImage(null)
+    setCalib(null)
+    setCalibAt(null)
+    setCalibImage(null)
+    setCalibRequestedAt(null)
     setCurrent([])
     setLux([])
     setSource(null)
@@ -218,7 +233,7 @@ export function useStation() {
         setStatus("connected")
         setError(null)
         addLog(`Đã kết nối broker MQTT (${host})`, "ok")
-        c.subscribe([`${T.online}`, T.state, T.config, T.energy, T.history, T.alert, T.image])
+        c.subscribe([`${T.online}`, T.state, T.config, T.energy, T.history, T.alert, T.image, T.calib, T.calibImage])
       })
       c.on("message", (topic, buf) => onMessage(topic, buf.toString()))
       c.on("error", (e) => {
@@ -280,6 +295,10 @@ export function useStation() {
       setNotice(null)
       send(T.cmdConfig, { reset: true }, "Đã gửi lệnh khôi phục cài đặt mặc định")
     },
+    recalibrate: () => {
+      setCalibRequestedAt(Date.now())
+      send(T.cmdRecalibrate, "1", "Đã gửi lệnh tìm lại đường (4 đèn sẽ sáng max khoảng 2 giây)")
+    },
   }
 
   const clearLog = useCallback(() => {
@@ -289,6 +308,7 @@ export function useStation() {
 
   return {
     status, error, source, boardOnline, lastAt, state, config, lamps, history24, alert, image, current, lux, log, notice,
+    calib, calibAt, calibImage, calibRequestedAt,
     connect, startSim, disconnect, cmd, clearLog, dismissNotice: () => setNotice(null), sim,
     alertSince: alert?.since ? toMs(alert.since) : undefined,
   }

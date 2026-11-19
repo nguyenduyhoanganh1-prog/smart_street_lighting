@@ -239,6 +239,45 @@ export function createSimBoard(publish: Publish) {
     }
   }
 
+  // Tìm đường giả lập: số đo thật của board trên ảnh phien_008/nen.2132 (tools/check_c_port.py), ảnh vẽ lại bằng canvas
+  const SIM_CALIB = {
+    state: "found", w: 320, h: 240,
+    top: [0.29691, 30.517], bottom: [-0.24869, 177.227], left: null,
+    kerb_top: [0.59173, -48.22], kerb_bottom: [-0.45393, 229.508],
+    x_min: 25, x_max: 216, bounds: [142.22, 182.43, 203.26],
+  } as const
+  function simCalibImage(): string {
+    const cv = document.createElement("canvas")
+    cv.width = SIM_CALIB.w
+    cv.height = SIM_CALIB.h
+    const g = cv.getContext("2d")
+    if (!g) return ""
+    const y = (l: readonly [number, number], x: number) => l[0] * x + l[1]
+    const band = (a: readonly [number, number], b: readonly [number, number], fill: string) => {
+      g.fillStyle = fill
+      g.beginPath()
+      g.moveTo(SIM_CALIB.x_min, y(a, SIM_CALIB.x_min))
+      g.lineTo(SIM_CALIB.x_max, y(a, SIM_CALIB.x_max))
+      g.lineTo(SIM_CALIB.x_max, y(b, SIM_CALIB.x_max))
+      g.lineTo(SIM_CALIB.x_min, y(b, SIM_CALIB.x_min))
+      g.fill()
+    }
+    g.fillStyle = "#1a1a1a"
+    g.fillRect(0, 0, cv.width, cv.height)
+    band(SIM_CALIB.kerb_top, SIM_CALIB.kerb_bottom, "#d8d8d8") // lề sáng
+    band(SIM_CALIB.top, SIM_CALIB.bottom, "#4a4a4a") // mặt đường tối hơn
+    g.fillStyle = "#f0f0f0" // vạch giữa đường
+    for (let x = SIM_CALIB.x_min + 6; x < SIM_CALIB.x_max - 8; x += 22) {
+      const mid = (y(SIM_CALIB.top, x) + y(SIM_CALIB.bottom, x)) / 2
+      g.fillRect(x, mid - 2, 12, 4)
+    }
+    return cv.toDataURL("image/jpeg", 0.6)
+  }
+  function pubCalib() {
+    pub(T.calibImage, simCalibImage())
+    pub(T.calib, { ...SIM_CALIB, t: Math.floor(Date.now() / 1000) })
+  }
+
   // Lệnh từ web (board kiểm tra mọi lệnh, sai thì bỏ qua)
   function handle(topic: string, payload: string) {
     let data: unknown = payload
@@ -265,6 +304,9 @@ export function createSimBoard(publish: Publish) {
     } else if (topic === T.cmdConfig && data && typeof data === "object") {
       config = applyConfig(config, data as Partial<Config> & { reset?: boolean })
       pubConfig()
+    } else if (topic === T.cmdRecalibrate && payload) {
+      setTimeout(pubCalib, 2000) // board thật: đèn max ~2 s rồi gửi ảnh
+      return
     } else return
     tick()
   }
@@ -273,6 +315,7 @@ export function createSimBoard(publish: Publish) {
   pubConfig()
   pub(T.alert, "")
   pub(T.image, "")
+  pubCalib() // như board vừa khởi động: đã tìm đường một lần
   last = Date.now() - TICK_MS
   tick()
   pub(T.history, { t: Date.now(), lamps: hist })

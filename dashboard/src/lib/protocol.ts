@@ -10,6 +10,9 @@ export const T = {
   history: `${PREFIX}/energy/history`, // HistoryPayload, retained
   alert: `${PREFIX}/alert`, // AlertPayload hoặc rỗng khi đã đóng, retained
   image: `${PREFIX}/alert/image`, // JPEG base64 hoặc rỗng, retained
+  calib: `${PREFIX}/calib`, // CalibPayload: kết quả lần tìm đường gần nhất, retained
+  calibImage: `${PREFIX}/calib/image`, // JPEG base64 của khung hình lúc tìm đường (4 đèn sáng max), retained
+  cmdRecalibrate: `${PREFIX}/cmd/recalibrate`, // "1": tìm lại đường (payload rỗng bị bỏ qua)
   cmdMode: `${PREFIX}/cmd/mode`, // "auto" / "manual"
   cmdLamp: `${PREFIX}/cmd/lamp`, // {"lamp":3,"duty":60}
   cmdForceNight: `${PREFIX}/cmd/force_night`, // "true" / "false"
@@ -31,6 +34,24 @@ export type StatePayload = {
   zones?: number[] // các vùng đang có người/xe (1..4)
   fps?: number
   sensor_error?: string // "bh1750" / "camera" khi đang chạy chế độ theo giờ
+}
+
+/** Đường thẳng [a, b]: y = a*x + b (riêng đầu trái: x = a*y + b), đơn vị pixel của ảnh calib */
+export type Line = [number, number]
+/** streetlight/calib: giống GET /api/road của trang ai-stream */
+export type CalibPayload = {
+  state: "found" | "not_found"
+  w: number
+  h: number
+  top?: Line // mép trên/dưới mặt đường
+  bottom?: Line
+  left?: Line | null // đầu trái xiên của đường
+  kerb_top?: Line | null // mép ngoài của lề, null khi không tìm thấy
+  kerb_bottom?: Line | null
+  x_min?: number
+  x_max?: number
+  bounds?: number[] // x của 3 vạch chia 4 vùng
+  t?: number // giây Unix lúc tìm (không có khi board chưa có giờ)
 }
 
 export type Config = {
