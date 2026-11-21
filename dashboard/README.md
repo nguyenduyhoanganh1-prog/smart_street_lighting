@@ -16,8 +16,8 @@ khoản khi mở trang.
   đúng với mô hình không.
 - Điện năng từng bóng (bảng + biểu đồ 24 giờ), dòng điện, lux theo thời gian.
 - Cài đặt ngưỡng lux, thời gian sáng/tối dần, giờ đêm; lịch sử sự kiện (lưu trong trình duyệt).
-- Cảnh báo vật dừng lâu: ảnh camera, dashboard vẽ chấm ở tâm vật + "Xe · 93%" từ `x`, `y`, `score` của gói
-  alert. Cài đặt có công tắc bật/tắt, thời gian dừng (10 s – 30 phút) và độ sáng nền ban đêm (10–100 %).
+- Cảnh báo xe dừng lâu (người đứng yên không báo): ảnh camera, dashboard vẽ một chấm ở tâm **mỗi xe** trong ảnh
+  (`objs` của gói alert), xe đang dừng có vòng đỏ; loại, vùng, độ tin cậy hiện ở cột bên cạnh. Cài đặt có công tắc bật/tắt, thời gian dừng (10 s – 30 phút) và độ sáng nền ban đêm (10–100 %).
 - Cảnh báo đèn hỏng: dùng mã `fault` board gửi (streetlight-node tự xét, xem `lamp_fault.c`); chỉ khi gói
   không có `fault` (firmware cũ, giả lập) dashboard mới tự đoán từ số đo INA219. Cảnh báo kèm ảnh từ board.
 - **Dữ liệu giả lập**: nút ở màn hình đăng nhập, chạy cả trang mà không cần board (có người/xe đi qua,

@@ -1,7 +1,7 @@
 // Bộ giả lập board ESP32-S3 chạy ngay trong trình duyệt, dùng khi chưa có phần cứng.
 // Nó publish/nhận đúng các topic MQTT như firmware thật (plans/00, plans/01),
 // nên web xử lý dữ liệu giả lập và dữ liệu thật bằng cùng một đoạn code.
-import { applyConfig, DEFAULT_CONFIG, T, type AlertPayload, type Config, type Mode } from "@/lib/protocol"
+import { applyConfig, DEFAULT_CONFIG, T, type AlertObj, type AlertPayload, type Config, type Mode } from "@/lib/protocol"
 
 type Publish = (topic: string, payload: string) => void
 type Obj = { type: "nguoi" | "xe"; pos: number; dir: 1 | -1; speed: number; stopAt?: number; stopUntil?: number; stoppedSince?: number }
@@ -14,15 +14,15 @@ const HOLD_DN = 10_000 // DAY_NIGHT_HOLD
 const MANUAL_TIMEOUT = 10 * 60_000
 
 /** Ảnh JPEG giả lập cho cảnh báo vật dừng: mặt đường 4 vùng + vật, KHÔNG vẽ chú thích (giống board:
- *  dashboard tự vẽ chấm/nhãn từ x, y, score). Trả về ảnh base64 và tâm vật (0..1). */
-function fakeImage(zone: number, cls: string): { b64: string; x: number; y: number } {
-  const x = (zone - 1) * 80 + 22
-  const cx = x + 19
-  const cy = cls === "xe" ? 128 : 121
-  return { b64: drawFakeImage(x, cls), x: cx / 320, y: cy / 240 }
+ *  dashboard tự vẽ chấm từ x, y, objs). Có thêm 1 xe đỗ sẵn ở vùng khác (như xe đã bấm "Đã xử lý") để
+ *  thấy board gửi chấm cho MỌI xe trong ảnh. Trả về ảnh base64, tâm xe đang dừng và mọi xe (0..1). */
+function fakeImage(zone: number): { b64: string; x: number; y: number; objs: AlertObj[] } {
+  const cars = [(zone - 1) * 80 + 22, (zone % 4) * 80 + 22] // xe đang dừng + xe đỗ sẵn
+  const objs = cars.map((x, k) => ({ x: (x + 19) / 320, y: (k === 0 ? 128 : 104) / 240, class: "xe", score: 80 + Math.floor(Math.random() * 18) }))
+  return { b64: drawFakeImage(cars), x: objs[0].x, y: objs[0].y, objs }
 }
 
-function drawFakeImage(x: number, cls: string): string {
+function drawFakeImage(cars: number[]): string {
   try {
     const c = document.createElement("canvas")
     c.width = 320
@@ -56,9 +56,8 @@ function drawFakeImage(x: number, cls: string): string {
       g.font = "bold 13px sans-serif"
       g.fillText(String(k + 1), k * 80 + 6, 172)
     }
-    g.fillStyle = cls === "xe" ? "#3b82f6" : "#f59e0b"
-    if (cls === "xe") g.fillRect(x + 4, 120, 30, 16)
-    else g.fillRect(x + 14, 108, 10, 26)
+    g.fillStyle = "#cbd5e1"
+    cars.forEach((x, k) => g.fillRect(x + 4, k === 0 ? 120 : 96, 30, 16))
     g.fillStyle = "rgba(255,255,255,.75)"
     g.font = "11px monospace"
     g.fillText(new Date().toLocaleString("vi-VN"), 8, 16)
@@ -165,11 +164,12 @@ export function createSimBoard(publish: Publish) {
     // Cảnh báo vật dừng lâu
     for (const o of objects) {
       if (!config.stop_alert) break // công tắc tắt: không cảnh báo
+      if (o.type !== "xe") continue // như board: chỉ xe dừng mới cảnh báo, người đứng yên bỏ qua
       if (!alert && o.stopUntil && now < o.stopUntil && o.stoppedSince && now - o.stoppedSince > config.stop_time_s * 1000) {
         const zone = Math.floor(o.pos) + 1
-        const img = fakeImage(zone, o.type)
-        const score = 80 + Math.floor(Math.random() * 18)
-        alert = { id: alertSeq++, type: "vat_dung", zone, class: o.type, since: o.stoppedSince, status: "open", x: img.x, y: img.y, score, obj: o }
+        const img = fakeImage(zone)
+        const score = img.objs[0].score
+        alert = { id: alertSeq++, type: "vat_dung", zone, class: o.type, since: o.stoppedSince, status: "open", x: img.x, y: img.y, score, objs: img.objs, obj: o }
         const { obj: _o, ...payload } = alert
         pub(T.alert, payload)
         pub(T.image, img.b64)
