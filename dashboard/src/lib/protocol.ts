@@ -141,7 +141,8 @@ export const CLASS_TEXT: Record<string, string> = { nguoi: "Người", xe: "Xe" 
 export const I100_MA = 20 // dòng một bóng ở 100% (mA)
 const SHORT_MA = 100
 const LOW_V = 4
-const CONFIRM = 2
+const RAISE_MS = 60_000 // lỗi phải kéo dài liên tục 1 phút mới báo (giống board, lamp_fault.h)
+const CLEAR_MS = 10_000 // bình thường lại 10 s thì gỡ lỗi
 
 export const FAULT_TEXT: Record<number, string> = {
   1: "Hở mạch hoặc cháy bóng: đèn đang bật nhưng không có dòng",
@@ -177,16 +178,17 @@ function detectFault(l: Lamp, prev: number) {
   return prev === 1 ? 1 : 0 // đèn tắt thì không biết bóng còn tốt không: giữ lỗi đứt bóng tới khi đèn sáng lại có dòng
 }
 
-/** Chuẩn hoá gói streetlight/energy và phát hiện lỗi (khi ESP32 không gửi mã lỗi: lỗi lặp lại 2 lần mới báo) */
+/** Chuẩn hoá gói streetlight/energy và phát hiện lỗi. Board mới tự gửi mã lỗi (đã xác nhận 1 phút); board
+ *  cũ / giả lập không gửi thì dashboard tự đoán, và cũng chỉ báo khi lỗi kéo dài liên tục RAISE_MS. */
 export function createLampModel() {
-  const lamps: (Lamp & { pending: number; count: number })[] = [1, 2, 3, 4].map((id) => ({
-    id, duty: 0, v: null, i: null, p: 0, eToday: 0, eTotal: 0, saving: null, fault: 0, msg: "", pending: 0, count: 0,
+  const lamps: (Lamp & { pending: number; pendingSince: number })[] = [1, 2, 3, 4].map((id) => ({
+    id, duty: 0, v: null, i: null, p: 0, eToday: 0, eTotal: 0, saving: null, fault: 0, msg: "", pending: 0, pendingSince: 0,
   }))
   return {
     setDuty(duty: number[]) {
       duty.slice(0, 4).forEach((d, k) => num(d) !== null && (lamps[k].duty = clamp(Number(d), 0, 100)))
     },
-    ingest(raw: EnergyPayload): Lamp[] {
+    ingest(raw: EnergyPayload, nowMs: number = Date.now()): Lamp[] {
       ;(raw.lamps ?? []).slice(0, 4).forEach((r, k) => {
         const L = lamps[(num(r.id) ?? k + 1) - 1] ?? lamps[k]
         if (num(r.duty) !== null) L.duty = clamp(Number(r.duty), 0, 100)
@@ -201,15 +203,15 @@ export function createLampModel() {
         const fw = num(r.fault)
         const f = fw !== null ? clamp(fw | 0, 0, 9) : detectFault(L, L.fault)
         if (fw !== null || f === L.fault) {
-          L.fault = f
-          L.count = 0
+          L.fault = f // mã của board đã được board xác nhận; hoặc đoán giống trạng thái hiện tại
+          L.pendingSince = 0
         } else {
-          if (f !== L.pending) Object.assign(L, { pending: f, count: 0 })
-          if (++L.count >= CONFIRM) Object.assign(L, { fault: f, count: 0 })
+          if (f !== L.pending || !L.pendingSince) Object.assign(L, { pending: f, pendingSince: nowMs })
+          if (nowMs - L.pendingSince >= (f === 0 ? CLEAR_MS : RAISE_MS)) Object.assign(L, { fault: f, pendingSince: 0 })
         }
         L.msg = L.fault ? (r.msg || FAULT_TEXT[L.fault] || `Mã lỗi ${L.fault}`) : ""
       })
-      return lamps.map(({ pending: _p, count: _c, ...l }) => l)
+      return lamps.map(({ pending: _p, pendingSince: _s, ...l }) => l)
     },
   }
 }
