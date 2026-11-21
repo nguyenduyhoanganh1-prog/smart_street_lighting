@@ -2,32 +2,60 @@ import { useState } from "react"
 import { Camera, CheckCircle2, Maximize2, TriangleAlert, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { dateTime, duration } from "@/lib/format"
-import { ALERT_TEXT, CLASS_TEXT, type AlertObj, type AlertPayload } from "@/lib/protocol"
+import { ALERT_TEXT, CLASS_TEXT, toMs, type AlertObj, type AlertPayload } from "@/lib/protocol"
 
 const DOT_COLOR: Record<string, string> = { xe: "#3b82f6", nguoi: "#f59e0b" }
-const SAME_OBJ = 0.08 // chấm trong objs cách vị trí cảnh báo ít hơn mức này (0..1) là chính vật đang dừng
+const SAME_OBJ = 0.08 // chấm trong objs cách vị trí cảnh báo ít hơn mức này (0..1) là chính xe đang dừng
 
-/** Các xe trong ảnh: board gửi objs (mọi xe của khung hình đó); chưa có thì chỉ vật đang cảnh báo */
-function alertDots(alert: AlertPayload): AlertObj[] {
-  if (alert.objs?.length) return alert.objs
-  return alert.x != null && alert.y != null ? [{ x: alert.x, y: alert.y, class: alert.class, score: alert.score }] : []
+type Car = AlertObj & { no: number; alerted: boolean }
+
+/** Các xe trong ảnh, đánh số 1, 2… từ trái sang phải. Board gửi objs (mọi xe của khung hình đó);
+ *  chưa có thì chỉ xe đang cảnh báo */
+function alertCars(alert: AlertPayload): Car[] {
+  const list: AlertObj[] = alert.objs?.length
+    ? [...alert.objs].sort((a, b) => a.x - b.x)
+    : alert.x != null && alert.y != null ? [{ x: alert.x, y: alert.y, class: alert.class, score: alert.score, zone: alert.zone, since: alert.since }] : []
+  const near = (o: AlertObj) => alert.x != null && alert.y != null && Math.hypot(o.x - alert.x, o.y - alert.y) < SAME_OBJ
+  return list.map((o, k) => ({ ...o, no: k + 1, alerted: near(o) }))
 }
 
-/** Chỉ chấm, không chữ: một chấm ở tâm mỗi xe; xe đang bị cảnh báo có thêm vòng đỏ */
-function ObjectDots({ alert, big = false }: { alert: AlertPayload; big?: boolean }) {
-  const dots = alertDots(alert)
-  const isStopped = (o: AlertObj) => alert.x != null && alert.y != null && Math.hypot(o.x - alert.x, o.y - alert.y) < SAME_OBJ
-  const size = big ? "h-5 w-5" : "h-3.5 w-3.5"
+/** Chỉ chấm có số, không chữ: số của chấm = số trong danh sách bên cạnh; xe đang bị cảnh báo có vòng đỏ */
+function CarDots({ cars, big = false }: { cars: Car[]; big?: boolean }) {
   return (
     <>
-      {dots.map((o, k) => (
-        <span key={k} className="pointer-events-none absolute" style={{ left: `${o.x * 100}%`, top: `${o.y * 100}%` }}>
-          {isStopped(o) && <span className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-red-500 ${big ? "h-9 w-9" : "h-6 w-6"}`} />}
-          <span className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow ${size}`}
-            style={{ background: DOT_COLOR[o.class ?? ""] ?? "#ef4444" }} />
+      {cars.map((c) => (
+        <span key={c.no} className="pointer-events-none absolute" style={{ left: `${c.x * 100}%`, top: `${c.y * 100}%` }}>
+          {c.alerted && <span className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-red-500 ${big ? "h-12 w-12" : "h-8 w-8"}`} />}
+          <span className={`absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white font-bold text-white shadow ${big ? "h-8 w-8 text-base" : "h-5 w-5 text-[11px]"}`}
+            style={{ background: DOT_COLOR[c.class ?? ""] ?? "#ef4444" }}>
+            {c.no}
+          </span>
         </span>
       ))}
     </>
+  )
+}
+
+/** Danh sách bên cạnh ảnh: xe số mấy, vùng nào, đã dừng bao lâu (đếm tiếp theo giờ thật) */
+function CarList({ cars }: { cars: Car[] }) {
+  if (cars.length === 0) return null
+  return (
+    <div className="space-y-1.5">
+      <p className="text-sm text-muted-foreground">Xe trong ảnh ({cars.length})</p>
+      <ul className="space-y-1">
+        {cars.map((c) => (
+          <li key={c.no} className={`flex flex-wrap items-center gap-x-2 rounded-md px-2 py-1 text-sm ${c.alerted ? "bg-bad-soft/50 font-semibold" : ""}`}>
+            <span className="flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold text-white" style={{ background: DOT_COLOR[c.class ?? ""] ?? "#ef4444" }}>{c.no}</span>
+            <span>Xe {c.no}</span>
+            <span className="text-muted-foreground">·</span>
+            <span>{c.zone ? `Vùng ${c.zone}` : "ngoài đường"}</span>
+            <span className="text-muted-foreground">·</span>
+            <span className="tnum">{c.since ? `đã dừng ${duration(Date.now() - (toMs(c.since) ?? Date.now()))}` : "đang theo dõi"}</span>
+            {c.alerted && <span className="text-destructive">· đang cảnh báo</span>}
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 
@@ -35,7 +63,11 @@ function ObjectDots({ alert, big = false }: { alert: AlertPayload; big?: boolean
 export function AlertPanel({ alert, image, since, onAck }: { alert: AlertPayload; image: string | null; since?: number; onAck: () => void }) {
   const [zoom, setZoom] = useState(false)
   const stopped = alert.type === "vat_dung"
-  const title = stopped ? `${CLASS_TEXT[alert.class ?? ""] ?? "Vật"} dừng lâu ở vùng ${alert.zone}` : (alert.msg ?? ALERT_TEXT[alert.type] ?? alert.type)
+  const cars = stopped ? alertCars(alert) : []
+  const alertedNo = cars.find((c) => c.alerted)?.no
+  const title = stopped
+    ? `${CLASS_TEXT[alert.class ?? ""] ?? "Vật"}${alertedNo ? ` số ${alertedNo}` : ""} dừng lâu ở vùng ${alert.zone}`
+    : (alert.msg ?? ALERT_TEXT[alert.type] ?? alert.type)
 
   return (
     <section aria-label="Cảnh báo" className="overflow-hidden rounded-2xl border-2 border-destructive bg-card shadow-lg shadow-destructive/15 animate-in zoom-in-95 duration-300">
@@ -43,7 +75,7 @@ export function AlertPanel({ alert, image, since, onAck }: { alert: AlertPayload
         {image ? (
           <button onClick={() => setZoom(true)} className="group relative block bg-black" aria-label="Xem ảnh lớn">
             <img src={image} alt={`Ảnh camera lúc cảnh báo: ${title}`} className="aspect-[4/3] w-full object-cover" />
-            <ObjectDots alert={alert} />
+            <CarDots cars={cars} />
             <span className="absolute bottom-2 right-2 flex items-center gap-1 rounded-md bg-black/60 px-2 py-1 text-xs text-white opacity-80 group-hover:opacity-100">
               <Maximize2 className="h-3.5 w-3.5" /> Phóng to
             </span>
@@ -60,10 +92,10 @@ export function AlertPanel({ alert, image, since, onAck }: { alert: AlertPayload
             {stopped && <div><dt className="text-muted-foreground">Vùng</dt><dd className="font-semibold">Vùng {alert.zone}</dd></div>}
             {stopped && <div><dt className="text-muted-foreground">Loại</dt><dd className="font-semibold">{CLASS_TEXT[alert.class ?? ""] ?? alert.class ?? "–"}</dd></div>}
             {stopped && alert.score != null && <div><dt className="text-muted-foreground">Độ tin cậy AI</dt><dd className="font-semibold tnum">{alert.score}%</dd></div>}
-            {stopped && alert.objs && <div><dt className="text-muted-foreground">Xe trong ảnh</dt><dd className="font-semibold tnum">{alert.objs.length} (vòng đỏ: xe đang dừng)</dd></div>}
             {since && <div><dt className="text-muted-foreground">Bắt đầu lúc</dt><dd className="font-semibold tnum">{dateTime(since)}</dd></div>}
             {since && <div><dt className="text-muted-foreground">{stopped ? "Đã dừng" : "Kéo dài"}</dt><dd className="font-semibold tnum">{duration(Date.now() - since)}</dd></div>}
           </dl>
+          {stopped && <CarList cars={cars} />}
           {stopped && <p className="text-sm text-muted-foreground">Đèn quanh vùng này đang sáng 100%. Xem ảnh để đánh giá: xe hỏng, tai nạn hay chỉ dừng tạm.</p>}
           <div className="mt-auto pt-1">
             <Button onClick={onAck} className="bg-frame text-white hover:bg-frame/90">
@@ -76,7 +108,7 @@ export function AlertPanel({ alert, image, since, onAck }: { alert: AlertPayload
         <div role="dialog" aria-modal="true" aria-label="Ảnh cảnh báo" className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 p-4" onClick={() => setZoom(false)}>
           <div className="relative inline-block max-h-full max-w-full">
             <img src={image} alt={`Ảnh camera lúc cảnh báo: ${title}`} className="block max-h-[90vh] max-w-full rounded-lg" />
-            <ObjectDots alert={alert} big />
+            <CarDots cars={cars} big />
           </div>
           <button className="absolute right-4 top-4 rounded-full bg-white/15 p-2 text-white hover:bg-white/25" aria-label="Đóng"><X className="h-5 w-5" /></button>
         </div>

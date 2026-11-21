@@ -16,9 +16,12 @@ const MANUAL_TIMEOUT = 10 * 60_000
 /** Ảnh JPEG giả lập cho cảnh báo vật dừng: mặt đường 4 vùng + vật, KHÔNG vẽ chú thích (giống board:
  *  dashboard tự vẽ chấm từ x, y, objs). Có thêm 1 xe đỗ sẵn ở vùng khác (như xe đã bấm "Đã xử lý") để
  *  thấy board gửi chấm cho MỌI xe trong ảnh. Trả về ảnh base64, tâm xe đang dừng và mọi xe (0..1). */
-function fakeImage(zone: number): { b64: string; x: number; y: number; objs: AlertObj[] } {
-  const cars = [(zone - 1) * 80 + 22, (zone % 4) * 80 + 22] // xe đang dừng + xe đỗ sẵn
-  const objs = cars.map((x, k) => ({ x: (x + 19) / 320, y: (k === 0 ? 128 : 104) / 240, class: "xe", score: 80 + Math.floor(Math.random() * 18) }))
+function fakeImage(zone: number, stoppedSince: number): { b64: string; x: number; y: number; objs: AlertObj[] } {
+  const cars = [(zone - 1) * 80 + 22, (zone % 4) * 80 + 22] // xe đang dừng + xe đỗ sẵn (dừng sớm hơn 90 s)
+  const objs = cars.map((x, k) => ({
+    x: (x + 19) / 320, y: (k === 0 ? 128 : 104) / 240, class: "xe", score: 80 + Math.floor(Math.random() * 18),
+    zone: k === 0 ? zone : (zone % 4) + 1, since: Math.round((stoppedSince - k * 90_000) / 1000),
+  }))
   return { b64: drawFakeImage(cars), x: objs[0].x, y: objs[0].y, objs }
 }
 
@@ -167,7 +170,7 @@ export function createSimBoard(publish: Publish) {
       if (o.type !== "xe") continue // như board: chỉ xe dừng mới cảnh báo, người đứng yên bỏ qua
       if (!alert && o.stopUntil && now < o.stopUntil && o.stoppedSince && now - o.stoppedSince > config.stop_time_s * 1000) {
         const zone = Math.floor(o.pos) + 1
-        const img = fakeImage(zone)
+        const img = fakeImage(zone, o.stoppedSince)
         const score = img.objs[0].score
         alert = { id: alertSeq++, type: "vat_dung", zone, class: o.type, since: o.stoppedSince, status: "open", x: img.x, y: img.y, score, objs: img.objs, obj: o }
         const { obj: _o, ...payload } = alert

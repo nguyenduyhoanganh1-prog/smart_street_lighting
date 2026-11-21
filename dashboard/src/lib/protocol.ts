@@ -108,7 +108,14 @@ export type AlertPayload = {
   score?: number // độ tin cậy nhận diện (%)
   objs?: AlertObj[] // mọi xe trong khung hình của ảnh (board gửi lại sau khi gửi ảnh)
 }
-export type AlertObj = { x: number; y: number; class?: string; score?: number }
+export type AlertObj = {
+  x: number
+  y: number
+  class?: string
+  score?: number
+  zone?: number // 1..4, không có = ngoài đường
+  since?: number // đứng yên từ lúc nào (giây Unix), không có = board chưa có giờ
+}
 export const ALERT_TEXT: Record<string, string> = {
   vat_dung: "Vật dừng lâu trên đường",
   camera: "Camera/AI lỗi, đang chạy chế độ theo giờ",
