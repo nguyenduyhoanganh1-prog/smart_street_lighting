@@ -4,23 +4,33 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
+import { Switch } from "@/components/ui/switch"
 import { fmt } from "@/lib/format"
-import { LIMITS, type Config, type StatePayload } from "@/lib/protocol"
+import { DEFAULT_CONFIG, LIMITS, type Config, type StatePayload } from "@/lib/protocol"
 import type { Station } from "@/lib/station"
 
-type NumKey = "lux_night" | "lux_day" | "fade_up_ms" | "fade_down_ms"
+type NumKey = "lux_night" | "lux_day" | "fade_up_ms" | "fade_down_ms" | "base_pct" | "stop_time_s"
 
-function SliderRow({ k, label, hint, unit, min, max, step, value, disabled, onCommit, extra }: {
+/** 75 -> "1 phút 15 giây", 600 -> "10 phút" */
+const minSec = (s: number) => {
+  const m = Math.floor(s / 60)
+  const r = s % 60
+  return m === 0 ? `${r} giây` : r === 0 ? `${m} phút` : `${m} phút ${r} giây`
+}
+
+function SliderRow({ k, label, hint, unit, min, max, step, value, disabled, onCommit, extra, format }: {
   k: NumKey; label: string; hint: string; unit: string; min: number; max: number; step: number; value: number; disabled: boolean; onCommit: (k: NumKey, v: number) => void; extra?: React.ReactNode
+  format?: (v: number) => string
 }) {
   const [drag, setDrag] = useState<number | null>(null)
   useEffect(() => setDrag(null), [value])
   const shown = drag ?? value
+  const text = format ? format(shown) : unit === "s" ? `${fmt(shown / 1000, shown % 1000 ? 2 : 0)} s` : `${shown} ${unit}`
   return (
     <div className="space-y-2.5">
       <div className="flex items-baseline justify-between gap-3">
         <Label htmlFor={k} className="font-semibold">{label}</Label>
-        <span className="font-bold tnum">{unit === "s" ? `${fmt(shown / 1000, shown % 1000 ? 2 : 0)} s` : `${shown} ${unit}`}</span>
+        <span className="font-bold tnum">{text}</span>
       </div>
       <Slider
         id={k}
@@ -41,7 +51,7 @@ function SliderRow({ k, label, hint, unit, min, max, step, value, disabled, onCo
 /** Cài đặt: ngưỡng lux, thời gian sáng dần/tối dần, giờ ban đêm. Luôn hiển thị theo streetlight/config (giá trị board đang dùng thật) */
 export function SettingsPanel({ config, state, st, disabled }: { config: Config | null; state: StatePayload | null; st: Station; disabled: boolean }) {
   const off = disabled || !config
-  const c = config ?? { lux_night: 30, lux_day: 100, fade_up_ms: 200, fade_down_ms: 3000, night_start: "18:00", night_end: "06:00" }
+  const c = config ?? DEFAULT_CONFIG
   const commit = (k: NumKey, v: number) => v !== c[k] && st.cmd.setConfig({ [k]: v })
   const [times, setTimes] = useState({ night_start: c.night_start, night_end: c.night_end })
   useEffect(() => setTimes({ night_start: c.night_start, night_end: c.night_end }), [c.night_start, c.night_end])
@@ -60,13 +70,29 @@ export function SettingsPanel({ config, state, st, disabled }: { config: Config 
 
       <div className="grid gap-6 md:grid-cols-2">
         <SliderRow k="lux_night" label="Ngưỡng chuyển sang đêm" unit="lux" {...LIMITS.lux} value={c.lux_night} disabled={off} onCommit={commit}
-          hint="Dưới mức này đủ lâu thì chuyển đêm, đèn nền 20%." extra={luxNow} />
+          hint={`Dưới mức này đủ lâu thì chuyển đêm, đèn nền ${c.base_pct}%.`} extra={luxNow} />
         <SliderRow k="lux_day" label="Ngưỡng về ngày" unit="lux" {...LIMITS.lux} value={c.lux_day} disabled={off} onCommit={commit}
           hint={`Trên mức này đủ lâu thì về ngày, tắt đèn. Phải lớn hơn ngưỡng đêm ít nhất ${LIMITS.LUX_MIN_GAP} lux.`} />
         <SliderRow k="fade_up_ms" label="Thời gian sáng dần" unit="s" {...LIMITS.fade_up_ms} value={c.fade_up_ms} disabled={off} onCommit={commit}
           hint="Khi có người/xe, đèn tăng sáng trong khoảng này. Áp dụng từ lần chuyển tiếp theo." />
         <SliderRow k="fade_down_ms" label="Thời gian tối dần" unit="s" {...LIMITS.fade_down_ms} value={c.fade_down_ms} disabled={off} onCommit={commit}
           hint="Khi người/xe đi qua, đèn giảm sáng từ từ trong khoảng này." />
+        <SliderRow k="base_pct" label="Độ sáng nền ban đêm" unit="%" {...LIMITS.base_pct} value={c.base_pct} disabled={off} onCommit={commit}
+          hint="Ban đêm, đèn không có người/xe sáng ở mức này; có người/xe vẫn sáng 100%. Mắt cảm nhận phi tuyến: 10→30% thấy khác rõ, 70→100% gần như không." />
+      </div>
+
+      <div className="space-y-4 rounded-xl border border-border p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <Label htmlFor="stop_alert" className="font-semibold">Cảnh báo vật dừng lâu</Label>
+            <p className="text-xs text-muted-foreground">Người/xe đứng yên trên đường quá lâu thì gửi cảnh báo kèm ảnh (chấm vị trí, loại, độ tin cậy). Chỉ chạy ban đêm, khi AI hoạt động.</p>
+          </div>
+          <Switch id="stop_alert" checked={c.stop_alert} disabled={off} className="data-[state=checked]:bg-frame"
+            onCheckedChange={(v) => v !== c.stop_alert && st.cmd.setConfig({ stop_alert: v })} />
+        </div>
+        <SliderRow k="stop_time_s" label="Dừng quá bao lâu thì cảnh báo" unit="s" {...LIMITS.stop_time_s} value={c.stop_time_s}
+          disabled={off || !c.stop_alert} onCommit={commit} format={minSec}
+          hint="Demo để 10–30 giây; đường thật nên vài phút để xe dừng đèn đỏ hay đón khách không bị báo." />
       </div>
 
       <div className="space-y-2">

@@ -11,11 +11,18 @@ const I100 = [19.6, 20.3, 19.8, 20.1] // mA mỗi bóng ở 100%
 const DARK_S = 150 // một vòng: 150 s phòng tối, 40 s bật đèn phòng
 const BRIGHT_S = 40
 const HOLD_DN = 10_000 // DAY_NIGHT_HOLD
-const STOP_TIME = 10_000
 const MANUAL_TIMEOUT = 10 * 60_000
 
-/** Ảnh JPEG giả lập cho cảnh báo vật dừng: mặt đường 4 vùng, khung đỏ quanh vật */
-function fakeImage(zone: number, cls: string): string {
+/** Ảnh JPEG giả lập cho cảnh báo vật dừng: mặt đường 4 vùng + vật, KHÔNG vẽ chú thích (giống board:
+ *  dashboard tự vẽ chấm/nhãn từ x, y, score). Trả về ảnh base64 và tâm vật (0..1). */
+function fakeImage(zone: number, cls: string): { b64: string; x: number; y: number } {
+  const x = (zone - 1) * 80 + 22
+  const cx = x + 19
+  const cy = cls === "xe" ? 128 : 121
+  return { b64: drawFakeImage(x, cls), x: cx / 320, y: cy / 240 }
+}
+
+function drawFakeImage(x: number, cls: string): string {
   try {
     const c = document.createElement("canvas")
     c.width = 320
@@ -49,18 +56,9 @@ function fakeImage(zone: number, cls: string): string {
       g.font = "bold 13px sans-serif"
       g.fillText(String(k + 1), k * 80 + 6, 172)
     }
-    const x = (zone - 1) * 80 + 22
     g.fillStyle = cls === "xe" ? "#3b82f6" : "#f59e0b"
     if (cls === "xe") g.fillRect(x + 4, 120, 30, 16)
     else g.fillRect(x + 14, 108, 10, 26)
-    g.strokeStyle = "#ef4444"
-    g.lineWidth = 3
-    g.strokeRect(x - 4, 100, 46, 44)
-    g.fillStyle = "#ef4444"
-    g.fillRect(x - 4, 84, 58, 16)
-    g.fillStyle = "#fff"
-    g.font = "bold 11px sans-serif"
-    g.fillText(`${cls} 0.86`, x, 96)
     g.fillStyle = "rgba(255,255,255,.75)"
     g.font = "11px monospace"
     g.fillText(new Date().toLocaleString("vi-VN"), 8, 16)
@@ -166,12 +164,15 @@ export function createSimBoard(publish: Publish) {
     }
     // Cảnh báo vật dừng lâu
     for (const o of objects) {
-      if (!alert && o.stopUntil && now < o.stopUntil && o.stoppedSince && now - o.stoppedSince > STOP_TIME) {
+      if (!config.stop_alert) break // công tắc tắt: không cảnh báo
+      if (!alert && o.stopUntil && now < o.stopUntil && o.stoppedSince && now - o.stoppedSince > config.stop_time_s * 1000) {
         const zone = Math.floor(o.pos) + 1
-        alert = { id: alertSeq++, type: "vat_dung", zone, class: o.type, since: o.stoppedSince, status: "open", obj: o }
+        const img = fakeImage(zone, o.type)
+        const score = 80 + Math.floor(Math.random() * 18)
+        alert = { id: alertSeq++, type: "vat_dung", zone, class: o.type, since: o.stoppedSince, status: "open", x: img.x, y: img.y, score, obj: o }
         const { obj: _o, ...payload } = alert
         pub(T.alert, payload)
-        pub(T.image, fakeImage(zone, o.type))
+        pub(T.image, img.b64)
       }
     }
 
@@ -184,7 +185,7 @@ export function createSimBoard(publish: Publish) {
       for (const k of zones) if (k >= 0 && k < 4) holdUntil[k] = Math.max(holdUntil[k], now + hold)
     }
     if (mode === "manual" && now > manualUntil) mode = "auto"
-    const target = mode === "manual" ? [...manualDuty] : holdUntil.map((h) => (!isNight ? 0 : now < h ? 100 : 20))
+    const target = mode === "manual" ? [...manualDuty] : holdUntil.map((h) => (!isNight ? 0 : now < h ? 100 : config.base_pct))
     for (let k = 0; k < 4; k++) {
       const up = config.fade_up_ms ? (100 / config.fade_up_ms) * 1000 * dt : 100
       const down = config.fade_down_ms ? (100 / config.fade_down_ms) * 1000 * dt : 100
@@ -303,6 +304,7 @@ export function createSimBoard(publish: Publish) {
       if (alert && String((data as { id: unknown }).id) === String(alert.id)) closeAlert()
     } else if (topic === T.cmdConfig && data && typeof data === "object") {
       config = applyConfig(config, data as Partial<Config> & { reset?: boolean })
+      if (!config.stop_alert && alert?.type === "vat_dung") closeAlert() // board thật cũng đóng khi tắt công tắc
       pubConfig()
     } else if (topic === T.cmdRecalibrate && payload) {
       setTimeout(pubCalib, 2000) // board thật: đèn max ~2 s rồi gửi ảnh
@@ -338,7 +340,7 @@ export function createSimBoard(publish: Publish) {
       if (alert) return
       const o: Obj = { type: "xe", dir: 1, pos: 2.5, speed: 0, stopAt: 2.5 }
       o.stopUntil = Date.now() + 40_000
-      o.stoppedSince = Date.now() - STOP_TIME - 1
+      o.stoppedSince = Date.now() - config.stop_time_s * 1000 - 1
       objects.push(o)
       tick()
     },

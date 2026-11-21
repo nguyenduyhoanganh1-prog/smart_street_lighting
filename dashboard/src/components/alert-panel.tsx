@@ -4,6 +4,27 @@ import { Button } from "@/components/ui/button"
 import { dateTime, duration } from "@/lib/format"
 import { ALERT_TEXT, CLASS_TEXT, type AlertPayload } from "@/lib/protocol"
 
+const DOT_COLOR: Record<string, string> = { xe: "#3b82f6", nguoi: "#f59e0b" }
+
+/** Chấm ở tâm vật + nhãn "Xe · 93%", vẽ chồng lên ảnh từ x, y (0..1) board gửi kèm cảnh báo */
+function ObjectMarker({ alert, big = false }: { alert: AlertPayload; big?: boolean }) {
+  if (alert.x == null || alert.y == null) return null
+  const color = DOT_COLOR[alert.class ?? ""] ?? "#ef4444"
+  const name = CLASS_TEXT[alert.class ?? ""] ?? alert.class ?? "Vật"
+  const label = alert.score != null ? `${name} · ${alert.score}%` : name
+  const onRight = alert.x < 0.6 // nhãn bên phải chấm, gần mép phải thì lật sang trái
+  return (
+    <span className="pointer-events-none absolute" style={{ left: `${alert.x * 100}%`, top: `${alert.y * 100}%` }}>
+      <span className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow ${big ? "h-5 w-5" : "h-3.5 w-3.5"}`}
+        style={{ background: color }} />
+      <span className={`absolute -translate-y-1/2 whitespace-nowrap rounded bg-black/70 px-1.5 py-0.5 font-semibold text-white ${big ? "text-base" : "text-xs"} ${onRight ? "left-3" : "right-3"}`}
+        style={{ borderLeft: `3px solid ${color}` }}>
+        {label}
+      </span>
+    </span>
+  )
+}
+
 /** Cảnh báo đang mở từ board (vật dừng lâu kèm ảnh, cảm biến lỗi...). Chỉ hiện khi có cảnh báo. */
 export function AlertPanel({ alert, image, since, onAck }: { alert: AlertPayload; image: string | null; since?: number; onAck: () => void }) {
   const [zoom, setZoom] = useState(false)
@@ -16,6 +37,7 @@ export function AlertPanel({ alert, image, since, onAck }: { alert: AlertPayload
         {image ? (
           <button onClick={() => setZoom(true)} className="group relative block bg-black" aria-label="Xem ảnh lớn">
             <img src={image} alt={`Ảnh camera lúc cảnh báo: ${title}`} className="aspect-[4/3] w-full object-cover" />
+            <ObjectMarker alert={alert} />
             <span className="absolute bottom-2 right-2 flex items-center gap-1 rounded-md bg-black/60 px-2 py-1 text-xs text-white opacity-80 group-hover:opacity-100">
               <Maximize2 className="h-3.5 w-3.5" /> Phóng to
             </span>
@@ -31,6 +53,7 @@ export function AlertPanel({ alert, image, since, onAck }: { alert: AlertPayload
           <dl className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-2 gap-3 text-sm">
             {stopped && <div><dt className="text-muted-foreground">Vùng</dt><dd className="font-semibold">Vùng {alert.zone}</dd></div>}
             {stopped && <div><dt className="text-muted-foreground">Loại</dt><dd className="font-semibold">{CLASS_TEXT[alert.class ?? ""] ?? alert.class ?? "–"}</dd></div>}
+            {stopped && alert.score != null && <div><dt className="text-muted-foreground">Độ tin cậy AI</dt><dd className="font-semibold tnum">{alert.score}%</dd></div>}
             {since && <div><dt className="text-muted-foreground">Bắt đầu lúc</dt><dd className="font-semibold tnum">{dateTime(since)}</dd></div>}
             {since && <div><dt className="text-muted-foreground">{stopped ? "Đã dừng" : "Kéo dài"}</dt><dd className="font-semibold tnum">{duration(Date.now() - since)}</dd></div>}
           </dl>
@@ -44,7 +67,10 @@ export function AlertPanel({ alert, image, since, onAck }: { alert: AlertPayload
       </div>
       {zoom && image && (
         <div role="dialog" aria-modal="true" aria-label="Ảnh cảnh báo" className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 p-4" onClick={() => setZoom(false)}>
-          <img src={image} alt={`Ảnh camera lúc cảnh báo: ${title}`} className="max-h-full max-w-full rounded-lg" />
+          <div className="relative inline-block max-h-full max-w-full">
+            <img src={image} alt={`Ảnh camera lúc cảnh báo: ${title}`} className="block max-h-[90vh] max-w-full rounded-lg" />
+            <ObjectMarker alert={alert} big />
+          </div>
           <button className="absolute right-4 top-4 rounded-full bg-white/15 p-2 text-white hover:bg-white/25" aria-label="Đóng"><X className="h-5 w-5" /></button>
         </div>
       )}

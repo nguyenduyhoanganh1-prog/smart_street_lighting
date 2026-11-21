@@ -59,14 +59,22 @@ export type Config = {
   lux_day: number
   fade_up_ms: number
   fade_down_ms: number
+  base_pct: number // độ sáng nền ban đêm khi không có người/xe (%)
+  stop_alert: boolean // bật/tắt cảnh báo vật dừng lâu
+  stop_time_s: number // dừng quá bao lâu thì cảnh báo (giây)
   night_start: string // "HH:MM"
   night_end: string
 }
-export const DEFAULT_CONFIG: Config = { lux_night: 30, lux_day: 100, fade_up_ms: 200, fade_down_ms: 3000, night_start: "18:00", night_end: "06:00" }
+export const DEFAULT_CONFIG: Config = {
+  lux_night: 30, lux_day: 100, fade_up_ms: 200, fade_down_ms: 3000, base_pct: 20, stop_alert: true, stop_time_s: 10,
+  night_start: "18:00", night_end: "06:00",
+}
 export const LIMITS = {
   lux: { min: 0, max: 1000, step: 5 },
   fade_up_ms: { min: 0, max: 2000, step: 50 },
   fade_down_ms: { min: 0, max: 10000, step: 250 },
+  base_pct: { min: 10, max: 100, step: 5 },
+  stop_time_s: { min: 10, max: 1800, step: 10 },
   LUX_MIN_GAP: 20,
 }
 
@@ -95,6 +103,9 @@ export type AlertPayload = {
   since?: number // ms hoặc giây Unix
   status?: string
   msg?: string
+  x?: number // vat_dung: tâm vật trên ảnh alert/image, 0..1 chiều rộng
+  y?: number // 0..1 chiều cao
+  score?: number // độ tin cậy nhận diện (%)
 }
 export const ALERT_TEXT: Record<string, string> = {
   vat_dung: "Vật dừng lâu trên đường",
@@ -195,6 +206,9 @@ export function applyConfig(cur: Config, patch: Partial<Config> & { reset?: bool
   if (patch.lux_day !== undefined) c.lux_day = n("lux", patch.lux_day) ?? c.lux_day
   if (patch.fade_up_ms !== undefined) c.fade_up_ms = n("fade_up_ms", patch.fade_up_ms) ?? c.fade_up_ms
   if (patch.fade_down_ms !== undefined) c.fade_down_ms = n("fade_down_ms", patch.fade_down_ms) ?? c.fade_down_ms
+  if (patch.base_pct !== undefined) c.base_pct = n("base_pct", patch.base_pct) ?? c.base_pct
+  if (typeof patch.stop_alert === "boolean") c.stop_alert = patch.stop_alert
+  if (patch.stop_time_s !== undefined) c.stop_time_s = n("stop_time_s", patch.stop_time_s) ?? c.stop_time_s
   const hhmm = /^([01]\d|2[0-3]):[0-5]\d$/
   if (patch.night_start && hhmm.test(patch.night_start)) c.night_start = patch.night_start
   if (patch.night_end && hhmm.test(patch.night_end)) c.night_end = patch.night_end

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import type { MqttClient } from "mqtt"
 import { LAMP_NAMES } from "@/config"
 import {
-  ALERT_TEXT, CLASS_TEXT, createLampModel, FAULT_TEXT, MODE_TEXT, T, toMs,
+  ALERT_TEXT, CLASS_TEXT, createLampModel, DEFAULT_CONFIG, FAULT_TEXT, MODE_TEXT, T, toMs,
   type AlertPayload, type CalibPayload, type Config, type HistoryPayload, type Lamp, type StatePayload,
 } from "@/lib/protocol"
 import { createSimBoard, type SimBoard } from "@/lib/sim"
@@ -130,8 +130,9 @@ export function useStation() {
           prev.current.fault[k] = l.fault
         })
       } else if (topic === T.config) {
-        const c = json() as Config | null
-        if (!c) return
+        const raw = json() as Partial<Config> | null
+        if (!raw) return
+        const c: Config = { ...DEFAULT_CONFIG, ...raw } // firmware cũ không gửi base_pct: dùng mặc định 20%
         const before = cfgRef.current
         cfgRef.current = c
         setConfig(c)

@@ -23,3 +23,12 @@ ml/data/raw/
 ml/**/*.h5
 ml/**/checkpoints/
 
+
+# Node / dashboard dependencies
+node_modules/
+
+# NVS images may hold WiFi/MQTT passwords
+nvs.bin
+
+# Host (PC) test binaries
+*.exe
