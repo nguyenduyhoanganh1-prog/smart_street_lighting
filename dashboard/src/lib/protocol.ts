@@ -22,6 +22,11 @@ export const T = {
 
 export type Mode = "auto" | "manual" | "schedule"
 export const MODE_TEXT: Record<string, string> = { auto: "Tự động", manual: "Chỉnh tay", schedule: "Theo giờ" }
+/** Lỗi cảm biến board gửi trong state.sensor_error */
+export const SENSOR_ERROR_TEXT: Record<string, string> = {
+  bh1750: "Cảm biến ánh sáng BH1750 lỗi (mất kết nối hoặc đo tối bất thường ban ngày): ngày/đêm lấy theo giờ",
+  camera: "Camera hoặc model nhận diện lỗi: đèn chạy theo giờ",
+}
 
 export type StatePayload = {
   night?: boolean
@@ -33,7 +38,7 @@ export type StatePayload = {
   vehicles?: number
   zones?: number[] // các vùng đang có người/xe (1..4)
   fps?: number
-  sensor_error?: string // "bh1750" / "camera" khi đang chạy chế độ theo giờ
+  sensor_error?: string // "bh1750" / "camera"; board bỏ trường này khi mọi cảm biến đều ổn
 }
 
 /** Đường thẳng [a, b]: y = a*x + b (riêng đầu trái: x = a*y + b), đơn vị pixel của ảnh calib */

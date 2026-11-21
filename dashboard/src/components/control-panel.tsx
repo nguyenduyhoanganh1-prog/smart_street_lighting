@@ -1,7 +1,7 @@
 import { Car, Footprints, Gauge, Hand, MoonStar, TriangleAlert, Wrench } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
-import { MODE_TEXT, type Lamp, type StatePayload } from "@/lib/protocol"
+import { MODE_TEXT, SENSOR_ERROR_TEXT, type Lamp, type StatePayload } from "@/lib/protocol"
 import type { Station } from "@/lib/station"
 
 function Row({ id, icon, title, desc, checked, disabled, onChange }: { id: string; icon: React.ReactNode; title: string; desc: string; checked: boolean; disabled?: boolean; onChange: (v: boolean) => void }) {
@@ -43,10 +43,13 @@ export function ControlPanel({ state, lamps, st, disabled }: { state: StatePaylo
         disabled={disabled}
         onChange={(v) => st.cmd.setForceNight(v)}
       />
-      {mode === "schedule" && (
+      {(state?.sensor_error || mode === "schedule") && (
         <p className="flex items-start gap-2 py-3 text-sm font-medium text-destructive">
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
-          Cảm biến ánh sáng hoặc camera lỗi, board đang chạy chế độ theo giờ ({state?.sensor_error ?? "xem Lịch sử"}).
+          {state?.sensor_error
+            ? SENSOR_ERROR_TEXT[state.sensor_error] ?? `Cảm biến lỗi: ${state.sensor_error}`
+            : "Cảm biến ánh sáng hoặc camera lỗi, board đang chạy chế độ theo giờ (xem Lịch sử)"}
+          {state?.sensor_error === "bh1750" && mode !== "schedule" && ". Camera vẫn bật đèn theo vùng có người/xe."}
         </p>
       )}
       <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3 py-4 text-sm">

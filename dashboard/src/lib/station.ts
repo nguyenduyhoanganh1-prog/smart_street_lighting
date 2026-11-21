@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import type { MqttClient } from "mqtt"
 import { LAMP_NAMES } from "@/config"
 import {
-  ALERT_TEXT, CLASS_TEXT, createLampModel, DEFAULT_CONFIG, FAULT_TEXT, MODE_TEXT, T, toMs, withStopTimes,
+  ALERT_TEXT, CLASS_TEXT, createLampModel, DEFAULT_CONFIG, FAULT_TEXT, MODE_TEXT, SENSOR_ERROR_TEXT, T, toMs, withStopTimes,
   type AlertPayload, type CalibPayload, type Config, type HistoryPayload, type Lamp, type StatePayload,
 } from "@/lib/protocol"
 import { createSimBoard, type SimBoard } from "@/lib/sim"
@@ -65,7 +65,7 @@ export function useStation() {
   const client = useRef<MqttClient | null>(null)
   const sim = useRef<SimBoard | null>(null)
   const model = useRef(createLampModel())
-  const prev = useRef({ fault: [0, 0, 0, 0], night: null as boolean | null, mode: null as string | null, alertId: null as string | null, online: null as boolean | null })
+  const prev = useRef({ fault: [0, 0, 0, 0], night: null as boolean | null, mode: null as string | null, sensorError: undefined as string | null | undefined, alertId: null as string | null, online: null as boolean | null })
   const pendingCfg = useRef<Partial<Config> | null>(null)
   const cfgRef = useRef<Config | null>(null)
   const lastSeen = useRef(0)
@@ -114,6 +114,12 @@ export function useStation() {
         if (typeof s.night === "boolean") p.night = s.night
         if (s.mode && p.mode && s.mode !== p.mode) addLog(`Chế độ: ${MODE_TEXT[s.mode] ?? s.mode}`, s.mode === "schedule" ? "bad" : "info")
         if (s.mode) p.mode = s.mode
+        const err = s.sensor_error ?? null // the board leaves the field out when every sensor is fine
+        if (err !== p.sensorError) {
+          if (err) addLog(SENSOR_ERROR_TEXT[err] ?? `Cảm biến lỗi: ${err}`, "bad")
+          else if (p.sensorError) addLog("Cảm biến đã hoạt động lại bình thường", "ok")
+          p.sensorError = err
+        }
       } else if (topic === T.energy) {
         const e = json()
         if (!e || !Array.isArray(e.lamps)) return
@@ -180,7 +186,7 @@ export function useStation() {
     sim.current?.stop()
     sim.current = null
     model.current = createLampModel()
-    prev.current = { fault: [0, 0, 0, 0], night: null, mode: null, alertId: null, online: null }
+    prev.current = { fault: [0, 0, 0, 0], night: null, mode: null, sensorError: undefined, alertId: null, online: null }
     lastSeen.current = 0
     cfgRef.current = null
     setBoardOnline(null)
