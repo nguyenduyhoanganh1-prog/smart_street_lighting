@@ -106,6 +106,8 @@ export function useStation() {
         const s = json() as StatePayload | null
         if (!s) return
         lastSeen.current = now
+        // TẠM (eval 6.4): gửi lại cho board giờ board gửi + giờ web nhận, board in ra độ trễ
+        if (typeof s.t === "number" && client.current?.connected) client.current.publish(T.cmdLatency, JSON.stringify({ t: s.t, rx: now }), { qos: 0 })
         if (s.duty) model.current.setDuty(s.duty)
         setState(s)
         if (typeof s.lux === "number") setLux((a) => [...a, { t: now, v: [s.lux!] }].slice(-SERIES_MAX))

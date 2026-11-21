@@ -15,6 +15,7 @@ export const T = {
   cmdRecalibrate: `${PREFIX}/cmd/recalibrate`, // "1": tìm lại đường (payload rỗng bị bỏ qua)
   cmdMode: `${PREFIX}/cmd/mode`, // "auto" / "manual"
   cmdLamp: `${PREFIX}/cmd/lamp`, // {"lamp":3,"duty":60,"t":<Unix ms lúc gửi>}
+  cmdLatency: `${PREFIX}/cmd/latency`, // TẠM (eval 6.4): {"t":<t của state>,"rx":<Unix ms lúc web nhận>}
   cmdForceNight: `${PREFIX}/cmd/force_night`, // "true" / "false"
   cmdAck: `${PREFIX}/cmd/alert_ack`, // {"id":...}
   cmdConfig: `${PREFIX}/cmd/config`, // chỉ các tham số muốn đổi, hoặc {"reset":true}
@@ -39,6 +40,7 @@ export type StatePayload = {
   zones?: number[] // các vùng đang có người/xe (1..4)
   fps?: number
   sensor_error?: string // "bh1750" / "camera"; board bỏ trường này khi mọi cảm biến đều ổn
+  t?: number // TẠM (eval 6.4): Unix ms lúc board gửi; web gửi lại qua cmd/latency
 }
 
 /** Đường thẳng [a, b]: y = a*x + b (riêng đầu trái: x = a*y + b), đơn vị pixel của ảnh calib */
