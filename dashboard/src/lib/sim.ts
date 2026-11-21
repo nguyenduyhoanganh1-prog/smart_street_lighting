@@ -20,7 +20,9 @@ function fakeImage(zone: number, stoppedSince: number): { b64: string; x: number
   const cars = [(zone - 1) * 80 + 22, (zone % 4) * 80 + 22] // xe đang dừng + xe đỗ sẵn (dừng sớm hơn 90 s)
   const objs = cars.map((x, k) => ({
     x: (x + 19) / 320, y: (k === 0 ? 128 : 104) / 240, class: "xe", score: 80 + Math.floor(Math.random() * 18),
-    zone: k === 0 ? zone : (zone % 4) + 1, since: Math.round((stoppedSince - k * 90_000) / 1000),
+    zone: k === 0 ? zone : (zone % 4) + 1,
+    // xe đang dừng: "since" (board có giờ SNTP); xe đỗ sẵn: chỉ "still_s" (như board chưa có giờ)
+    ...(k === 0 ? { since: Math.round(stoppedSince / 1000) } : { still_s: Math.round((Date.now() - stoppedSince + 90_000) / 1000) }),
   }))
   return { b64: drawFakeImage(cars), x: objs[0].x, y: objs[0].y, objs }
 }

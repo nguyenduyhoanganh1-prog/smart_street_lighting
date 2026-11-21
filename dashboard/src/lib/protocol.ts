@@ -106,6 +106,7 @@ export type AlertPayload = {
   x?: number // vat_dung: tâm vật trên ảnh alert/image, 0..1 chiều rộng
   y?: number // 0..1 chiều cao
   score?: number // độ tin cậy nhận diện (%)
+  still_s?: number // vat_dung: đã dừng bao nhiêu giây lúc board gửi
   objs?: AlertObj[] // mọi xe trong khung hình của ảnh (board gửi lại sau khi gửi ảnh)
 }
 export type AlertObj = {
@@ -114,7 +115,17 @@ export type AlertObj = {
   class?: string
   score?: number
   zone?: number // 1..4, không có = ngoài đường
-  since?: number // đứng yên từ lúc nào (giây Unix), không có = board chưa có giờ
+  since?: number // đứng yên từ lúc nào (giây Unix, hoặc ms sau withStopTimes), không có = board chưa có giờ
+  still_s?: number // đã đứng yên bao nhiêu giây lúc board gửi (không cần giờ SNTP)
+}
+
+/** Board chưa có giờ SNTP thì không gửi "since", chỉ gửi "still_s" (đếm bằng đồng hồ nội của board):
+ *  quy ra thời điểm bắt đầu dừng = lúc nhận gói − still_s, để dashboard vẫn đếm được thời gian dừng.
+ *  (Gói retained mở lại sau này sẽ lệch đúng bằng thời gian từ lúc board gửi tới lúc mở trang.) */
+export function withStopTimes(a: AlertPayload, nowMs: number): AlertPayload {
+  const fix = <T extends { since?: number; still_s?: number }>(o: T): T =>
+    o.since == null && o.still_s != null ? { ...o, since: nowMs - o.still_s * 1000 } : o
+  return { ...fix(a), objs: a.objs?.map(fix) }
 }
 export const ALERT_TEXT: Record<string, string> = {
   vat_dung: "Vật dừng lâu trên đường",

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import type { MqttClient } from "mqtt"
 import { LAMP_NAMES } from "@/config"
 import {
-  ALERT_TEXT, CLASS_TEXT, createLampModel, DEFAULT_CONFIG, FAULT_TEXT, MODE_TEXT, T, toMs,
+  ALERT_TEXT, CLASS_TEXT, createLampModel, DEFAULT_CONFIG, FAULT_TEXT, MODE_TEXT, T, toMs, withStopTimes,
   type AlertPayload, type CalibPayload, type Config, type HistoryPayload, type Lamp, type StatePayload,
 } from "@/lib/protocol"
 import { createSimBoard, type SimBoard } from "@/lib/sim"
@@ -150,7 +150,8 @@ export function useStation() {
         const h = json() as HistoryPayload | null
         if (h && Array.isArray(h.lamps)) setHistory24(h)
       } else if (topic === T.alert) {
-        const a = text ? (json() as AlertPayload | null) : null
+        const raw = text ? (json() as AlertPayload | null) : null
+        const a = raw ? withStopTimes(raw, Date.now()) : null
         setAlert(a)
         const id = a ? String(a.id) : null
         if (a && id !== prev.current.alertId) {
