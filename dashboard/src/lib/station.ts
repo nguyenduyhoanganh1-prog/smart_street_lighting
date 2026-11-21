@@ -290,7 +290,8 @@ export function useStation() {
 
   const cmd = {
     setMode: (m: "auto" | "manual") => send(T.cmdMode, m, `Đã gửi lệnh chuyển sang chế độ ${MODE_TEXT[m].toLowerCase()}`),
-    setLamp: (lamp: number, duty: number) => send(T.cmdLamp, { lamp, duty: Math.round(duty) }, `Đã gửi lệnh đèn ${lamp} sáng ${Math.round(duty)}%`),
+    // t = giờ gửi (Unix ms): board trừ với giờ SNTP lúc nhận để đo độ trễ web -> board (plans/eval.md 6.5)
+    setLamp: (lamp: number, duty: number) => send(T.cmdLamp, { lamp, duty: Math.round(duty), t: Date.now() }, `Đã gửi lệnh đèn ${lamp} sáng ${Math.round(duty)}%`),
     setForceNight: (v: boolean) => send(T.cmdForceNight, v ? "true" : "false", v ? "Đã gửi lệnh ép chế độ đêm" : "Đã tắt ép chế độ đêm"),
     ack: (id: string | number) => send(T.cmdAck, { id }, "Đã đánh dấu cảnh báo là đã xử lý"),
     setConfig: (patch: Partial<Config>) => {

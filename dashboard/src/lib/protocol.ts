@@ -14,7 +14,7 @@ export const T = {
   calibImage: `${PREFIX}/calib/image`, // JPEG base64 của khung hình lúc tìm đường (4 đèn sáng max), retained
   cmdRecalibrate: `${PREFIX}/cmd/recalibrate`, // "1": tìm lại đường (payload rỗng bị bỏ qua)
   cmdMode: `${PREFIX}/cmd/mode`, // "auto" / "manual"
-  cmdLamp: `${PREFIX}/cmd/lamp`, // {"lamp":3,"duty":60}
+  cmdLamp: `${PREFIX}/cmd/lamp`, // {"lamp":3,"duty":60,"t":<Unix ms lúc gửi>}
   cmdForceNight: `${PREFIX}/cmd/force_night`, // "true" / "false"
   cmdAck: `${PREFIX}/cmd/alert_ack`, // {"id":...}
   cmdConfig: `${PREFIX}/cmd/config`, // chỉ các tham số muốn đổi, hoặc {"reset":true}
