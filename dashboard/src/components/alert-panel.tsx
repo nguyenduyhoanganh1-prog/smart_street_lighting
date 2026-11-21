@@ -9,11 +9,11 @@ const SAME_OBJ = 0.08 // chấm trong objs cách vị trí cảnh báo ít hơn 
 
 type Car = AlertObj & { no: number; alerted: boolean }
 
-/** Các xe trên đường trong ảnh, đánh số 1, 2… từ trái sang phải. Board gửi objs (các xe của khung hình đó);
+/** Các xe trong ảnh, đánh số 1, 2… từ trái sang phải. Board gửi objs (mọi xe của khung hình đó);
  *  chưa có thì chỉ xe đang cảnh báo */
 function alertCars(alert: AlertPayload): Car[] {
   const list: AlertObj[] = alert.objs?.length
-    ? alert.objs.filter((o) => o.zone !== 0).sort((a, b) => a.x - b.x) // zone 0 = ngoài đường: không chấm, không đánh số
+    ? [...alert.objs].sort((a, b) => a.x - b.x)
     : alert.x != null && alert.y != null ? [{ x: alert.x, y: alert.y, class: alert.class, score: alert.score, zone: alert.zone, since: alert.since }] : []
   const near = (o: AlertObj) => alert.x != null && alert.y != null && Math.hypot(o.x - alert.x, o.y - alert.y) < SAME_OBJ
   return list.map((o, k) => ({ ...o, no: k + 1, alerted: near(o) }))
@@ -48,7 +48,7 @@ function CarList({ cars }: { cars: Car[] }) {
             <span className="flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold text-white" style={{ background: DOT_COLOR[c.class ?? ""] ?? "#ef4444" }}>{c.no}</span>
             <span>Xe {c.no}</span>
             <span className="text-muted-foreground">·</span>
-            <span>Vùng {c.zone ?? "–"}</span>
+            <span>{c.zone ? `Vùng ${c.zone}` : "ngoài đường"}</span>
             <span className="text-muted-foreground">·</span>
             <span className="tnum">{c.since ? `đã dừng ${duration(Date.now() - (toMs(c.since) ?? Date.now()))}` : "đang theo dõi"}</span>
             {c.alerted && <span className="text-destructive">· đang cảnh báo</span>}
