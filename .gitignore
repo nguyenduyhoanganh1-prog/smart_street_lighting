@@ -32,3 +32,8 @@ nvs.bin
 
 # Host (PC) test binaries
 *.exe
+
+# Serial monitor logs (large, kept locally)
+log.*.txt
+build_log.txt
+size_log.txt
