@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Stream - Đèn đường thông minh</title>
+<style>
+:root{--bg:#10151c;--card:#1a222d;--line:#2b3644;--text:#e6edf3;--muted:#8b98a8;--accent:#4aa3ff;--ok:#3fb950;--warn:#f0883e}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.4 system-ui,sans-serif}
+main{max-width:720px;margin:0 auto;padding:12px 16px 32px}
+h1{font-size:18px;margin:8px 0 12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px}
+canvas{width:100%;aspect-ratio:4/3;background:#000;border-radius:8px;display:block}
+.stats{display:flex;flex-wrap:wrap;gap:6px 16px;color:var(--muted);font-size:13px;margin-top:8px}
+.stats b{color:var(--text);font-weight:600}
+.actions{margin-top:8px}
+button{background:var(--accent);color:#fff;border:0;border-radius:6px;padding:8px 14px;font:inherit;cursor:pointer}
+button:disabled{opacity:.5;cursor:default}
+.zones{display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:8px;font-size:14px}
+.dets{margin:8px 0 0;padding:0;list-style:none;font-size:14px;min-height:20px}
+.dets li{display:flex;justify-content:space-between;padding:2px 0}
+.row{display:flex;align-items:center;gap:10px;margin:8px 0}
+.row label{width:64px;flex:none}
+.row input[type=range]{flex:1;min-width:0}
+.row output{width:44px;text-align:right;font-variant-numeric:tabular-nums}
+.toggle{display:flex;align-items:center;gap:10px;margin:10px 0}
+.toggle input{width:20px;height:20px}
+.hint{color:var(--muted);font-size:13px;margin:4px 0 0}
+#err{color:var(--warn);min-height:20px;font-size:13px}
+</style>
+</head>
+<body>
+<main>
+<h1>Stream camera + AI</h1>
+
+<div class="card">
+  <canvas id="view" width="320" height="240"></canvas>
+  <div class="stats">
+    <span>Khung hình: <b id="fps">-</b>/s</span>
+    <span>Suy luận: <b id="infer">-</b> ms</span>
+    <span>Cả vòng: <b id="loop">-</b> ms</span>
+    <span>RAM nội: <b id="heapInt">-</b> KB</span>
+    <span>PSRAM: <b id="heapPs">-</b> KB</span>
+    <span>Đường: <b id="road">đang hiệu chỉnh...</b></span>
+  </div>
+  <div class="actions"><button type="button" id="recal" disabled>Tìm lại đường</button></div>
+  <div class="zones" id="zones"></div>
+  <ul class="dets" id="dets"></ul>
+  <div id="err"></div>
+</div>
+
+<div class="card">
+  <div class="toggle"><input type="checkbox" id="auto"><label for="auto">Đèn tự động theo model (người/xe → sáng zone đó và 2 zone cạnh)</label></div>
+  <div class="toggle"><input type="checkbox" id="lock"><label for="lock">Khoá phơi sáng (giữ độ sáng ảnh cố định như lúc thu dataset)</label></div>
+  <div class="row"><label for="s0">Tất cả</label><input type="range" id="s0" min="0" max="100" step="5" value="0"><output id="o0">0%</output></div>
+  <div class="row"><label for="s1">Đèn 1</label><input type="range" id="s1" min="0" max="100" step="5" value="0"><output id="o1">0%</output></div>
+  <div class="row"><label for="s2">Đèn 2</label><input type="range" id="s2" min="0" max="100" step="5" value="0"><output id="o2">0%</output></div>
+  <div class="row"><label for="s3">Đèn 3</label><input type="range" id="s3" min="0" max="100" step="5" value="0"><output id="o3">0%</output></div>
+  <div class="row"><label for="s4">Đèn 4</label><input type="range" id="s4" min="0" max="100" step="5" value="0"><output id="o4">0%</output></div>
+  <p class="hint">Kéo thanh trượt sẽ tắt chế độ tự động. Khung xanh là mặt đường tìm được lúc khởi động (cả 4 đèn sáng max ~2 s), viền cam là mép ngoài của lề. Vạch đỏ chia 4 vùng bằng nhau ngoài thực tế, kéo dài qua cả lề: vùng k ứng với đèn k, đèn 1 bên trái. Người/xe trên đường hoặc trên lề đều bật đèn; vật ngoài viền cam thì không. Nút "Tìm lại đường" chạy lại bước này (đèn sáng max ~2 s rồi trở về như cũ). Không tìm được đường thì zone là 4 phần đều theo chiều ngang (vạch trắng).</p>
+</div>
+</main>
+
+<script>
+"use strict";
+const LAMPS = 4;
+const NAMES = { car: "Xe", human: "Người" };
+const COLORS = { car: "#f0883e", human: "#3fb950" };
+const STATE_MS = 1000;
+const RETRY_MS = 300;
+const SAME_FRAME_MS = 40;
+const SEND_GAP_MS = 120;
+const ROAD_MARGIN = 8;      // px, same as ROAD_MARGIN_PX in road_zones.c
+const ROAD_TEXT = { pending: "đang hiệu chỉnh...", found: "đã tìm thấy", not_found: "không tìm thấy (chia 4 phần đều)" };
+
+const $ = (id) => document.getElementById(id);
+const canvas = $("view");
+const ctx = canvas.getContext("2d");
+let lampPct = [0, 0, 0, 0];
+let lastSeq = -1;
+let frames = 0;
+let fpsStart = performance.now();
+let dragging = -1;           // slider being dragged: do not overwrite it from the board
+let road = null;             // start-up road calibration (/api/road), null until found
+
+// ---- Road geometry: same formulas as road_zones.c, in frame pixels (= canvas pixels) ----
+const yTop = (x) => road.top[0] * x + road.top[1];
+const yBottom = (x) => road.bottom[0] * x + road.bottom[1];
+// x where the slanted left end meets an edge line y = a*x + b (x_min when there is no left end)
+function leftEndOn(edge) {
+  if (!road.left) return road.x_min;
+  const [a, b] = road.left;
+  return (a * edge[1] + b) / (1 - a * edge[0]);
+}
+// Outer limits of the lit area: the outer kerb edge when the board found it, else the road edge
+// (min/max: a badly fitted kerb line never shrinks the area below the road, as in road_zones.c)
+const outerTop = (x) => road.kerb_top ? Math.min(road.kerb_top[0] * x + road.kerb_top[1], yTop(x)) : yTop(x);
+const outerBottom = (x) => road.kerb_bottom ? Math.max(road.kerb_bottom[0] * x + road.kerb_bottom[1], yBottom(x)) : yBottom(x);
+// "road", "kerb" (pavement strip next to the road) or "" (off: ignored by the lamps). Same rule as road_zones_contains().
+function placeOf(x, y) {
+  if (x < road.x_min || x > road.x_max) return "";
+  if (road.left && x < road.left[0] * y + road.left[1] - ROAD_MARGIN) return "";
+  if (y < outerTop(x) - ROAD_MARGIN || y > outerBottom(x) + ROAD_MARGIN) return "";
+  return y >= yTop(x) - ROAD_MARGIN && y <= yBottom(x) + ROAD_MARGIN ? "road" : "kerb";
+}
+// Zone 1..4 of a detection centre (0..1 of the frame), 0 = off the road and kerbs; kerb = on a kerb strip.
+// The zone cuts are vertical lines, so a kerb point gets the zone of the road next to it.
+function locate(cx, cy) {
+  if (!road) return { zone: Math.min(LAMPS, Math.floor(cx * LAMPS) + 1), kerb: false };
+  const x = cx * canvas.width, y = cy * canvas.height;
+  const place = placeOf(x, y);
+  if (!place) return { zone: 0, kerb: false };
+  return { zone: 1 + road.bounds.filter((b) => x >= b).length, kerb: place === "kerb" };
+}
+const whereText = (loc) => (loc.zone ? "vùng " + loc.zone + (loc.kerb ? " (lề)" : "") : "ngoài đường");
+
+async function loadRoad() {
+  let state = "pending";
+  try {
+    const r = await (await fetch("/api/road", { cache: "no-store" })).json();
+    state = r.state;
+    road = state === "found" ? r : null;
+    $("road").textContent = ROAD_TEXT[state] || state;
+  } catch (e) { /* board not reachable yet: try again */ }
+  $("recal").disabled = state === "pending"; // one calibration at a time
+  if (state === "pending") setTimeout(loadRoad, STATE_MS);
+}
+
+// "Tìm lại đường": the board answers at once and reports "pending" until the new calibration ends
+async function recalibrate() {
+  $("recal").disabled = true;
+  try {
+    await post("/api/recalibrate", {});
+    road = null;
+    $("road").textContent = ROAD_TEXT.pending;
+    setTimeout(loadRoad, STATE_MS);
+  } catch (e) {
+    $("err").textContent = e.message;
+    $("recal").disabled = false;
+  }
+}
+
+// Outer kerb edges (orange), each found side drawn as its own band from the road's left end to x_max
+function drawKerbs() {
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "rgba(255,150,0,0.9)";
+  for (const edge of [road.kerb_top, road.kerb_bottom]) {
+    if (!edge) continue;
+    const xs = Math.max(road.x_min, leftEndOn(edge));
+    ctx.beginPath();
+    ctx.moveTo(xs, edge[0] * xs + edge[1]);
+    ctx.lineTo(road.x_max, edge[0] * road.x_max + edge[1]);
+    ctx.stroke();
+  }
+  // close the band at both ends so the kerb area reads as one shape
+  ctx.beginPath();
+  ctx.moveTo(road.x_max, outerTop(road.x_max)); ctx.lineTo(road.x_max, outerBottom(road.x_max));
+  const xl = road.x_min;
+  ctx.moveTo(xl, outerTop(xl)); ctx.lineTo(xl, outerBottom(xl));
+  ctx.stroke();
+}
+
+function drawRoad() {
+  const xs = leftEndOn(road.top), xe = leftEndOn(road.bottom);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "rgba(0,255,0,0.8)";
+  ctx.beginPath();
+  ctx.moveTo(xs, yTop(xs));
+  ctx.lineTo(road.x_max, yTop(road.x_max));
+  ctx.lineTo(road.x_max, yBottom(road.x_max));
+  ctx.lineTo(xe, yBottom(xe));
+  ctx.closePath();
+  ctx.stroke();
+  drawKerbs();
+  // zone cuts run across the road AND the kerbs: a person on the pavement belongs to a zone too
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "rgba(255,60,60,0.9)";
+  for (const b of road.bounds) {
+    ctx.beginPath(); ctx.moveTo(b, outerTop(b)); ctx.lineTo(b, outerBottom(b)); ctx.stroke();
+  }
+  // zone numbers in the middle of each stretch (the far ones are narrow: number only)
+  const edges = [Math.max(xs, xe), ...road.bounds, road.x_max];
+  ctx.fillStyle = "rgba(255,255,0,0.95)";
+  for (let k = 0; k < LAMPS; k++) {
+    const mid = (edges[k] + edges[k + 1]) / 2;
+    ctx.fillText(String(k + 1), mid - 3, (yTop(mid) + yBottom(mid)) / 2 + 4);
+  }
+}
+
+function parseDetections(header) {
+  if (!header) return [];
+  return header.split("|").map((s) => {
+    const p = s.split(":");
+    return { name: p[0], score: +p[1], cx: +p[2] / 1000, cy: +p[3] / 1000, w: +p[4] / 1000, h: +p[5] / 1000 };
+  });
+}
+
+function drawOverlay(dets) {
+  const W = canvas.width, H = canvas.height;
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = "rgba(255,255,255,0.35)";
+  ctx.fillStyle = "rgba(255,255,255,0.85)";
+  ctx.font = "12px system-ui";
+  for (let k = 0; k < LAMPS; k++) {
+    const x = (k * W) / LAMPS;
+    if (k > 0 && !road) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+    ctx.fillText("Đèn " + (k + 1) + ": " + lampPct[k] + "%", x + 4, 14);
+  }
+  if (road) drawRoad();
+  for (const d of dets) drawDetection(d, W, H);
+}
+
+// One detection = a dot at its centre (FOMO gives centroids, the box size means little)
+// plus a short label on a dark pill so it stays readable over the road lines.
+const DOT_R = 5, LABEL_PAD = 3, LABEL_H = 15;
+function drawDetection(d, W, H) {
+  const color = COLORS[d.name] || "#4aa3ff";
+  const x = d.cx * W, y = d.cy * H;
+  ctx.beginPath();
+  ctx.arc(x, y, DOT_R, 0, 2 * Math.PI);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = "#000";
+  ctx.stroke();
+
+  const text = (NAMES[d.name] || d.name) + " · " + whereText(locate(d.cx, d.cy)) + " · " + d.score + "%";
+  const tw = ctx.measureText(text).width + 2 * LABEL_PAD;
+  // right of the dot; flip to the left near the right edge, keep inside the frame vertically
+  let lx = x + DOT_R + 4;
+  if (lx + tw > W) lx = x - DOT_R - 4 - tw;
+  const ly = Math.min(Math.max(y - LABEL_H / 2, 18), H - LABEL_H);
+  ctx.fillStyle = "rgba(0,0,0,0.6)";
+  ctx.fillRect(lx, ly, tw, LABEL_H);
+  ctx.fillStyle = color;
+  ctx.fillText(text, lx + LABEL_PAD, ly + LABEL_H - 4);
+}
+
+// "Người: vùng 2, 4" / "Xe: vùng 1": the zones that hold each kind right now (objects off the road are left out)
+function showZoneSummary(dets) {
+  const box = $("zones");
+  box.textContent = "";
+  for (const name of Object.keys(NAMES)) {
+    const zones = [...new Set(dets.filter((d) => d.name === name).map((d) => locate(d.cx, d.cy).zone).filter((z) => z > 0))]
+      .sort((a, b) => a - b);
+    const span = document.createElement("span");
+    span.textContent = NAMES[name] + ": " + (zones.length ? "vùng " + zones.join(", ") : "không có");
+    span.style.color = zones.length ? COLORS[name] : "var(--muted)";
+    box.append(span);
+  }
+}
+
+function showDetections(dets) {
+  showZoneSummary(dets);
+  const ul = $("dets");
+  ul.textContent = "";
+  if (dets.length === 0) { ul.textContent = "Không phát hiện vật thể"; return; }
+  for (const d of dets) {
+    const li = document.createElement("li");
+    const a = document.createElement("span");
+    a.textContent = (NAMES[d.name] || d.name) + " - " + whereText(locate(d.cx, d.cy));
+    a.style.color = COLORS[d.name] || "";
+    const b = document.createElement("span");
+    b.textContent = d.score + "%";
+    li.append(a, b);
+    ul.append(li);
+  }
+}
+
+async function frameLoop() {
+  try {
+    const res = await fetch("/frame.jpg", { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const info = (res.headers.get("X-Info") || "").split(",").map(Number); // seq,resize,dsp,infer(us),loop(ms),bytes
+    if (info[0] === lastSeq) { setTimeout(frameLoop, SAME_FRAME_MS); return; }
+    lastSeq = info[0];
+    const bmp = await createImageBitmap(await res.blob());
+    ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    bmp.close();
+    const dets = parseDetections(res.headers.get("X-Det"));
+    drawOverlay(dets);
+    showDetections(dets);
+    $("infer").textContent = (info[3] / 1000).toFixed(0);
+    $("loop").textContent = info[4];
+    frames++;
+    const now = performance.now();
+    if (now - fpsStart >= 2000) {
+      $("fps").textContent = ((frames * 1000) / (now - fpsStart)).toFixed(1);
+      frames = 0; fpsStart = now;
+    }
+    $("err").textContent = "";
+    setTimeout(frameLoop, 0);
+  } catch (e) {
+    $("err").textContent = "Mất kết nối với board, đang thử lại...";
+    setTimeout(frameLoop, RETRY_MS);
+  }
+}
+
+async function post(path, body) {
+  const res = await fetch(path, { method: "POST", body: JSON.stringify(body) });
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || ("HTTP " + res.status)); }
+}
+
+async function pollState() {
+  try {
+    const res = await fetch("/api/state", { cache: "no-store" });
+    const s = await res.json();
+    lampPct = s.lamps;
+    for (let k = 1; k <= LAMPS; k++) {
+      if (dragging !== k) { $("s" + k).value = s.lamps[k - 1]; $("o" + k).textContent = s.lamps[k - 1] + "%"; }
+    }
+    if (document.activeElement !== $("auto")) $("auto").checked = s.auto;
+    if (document.activeElement !== $("lock")) $("lock").checked = s.locked;
+    $("heapInt").textContent = (s.heap_int / 1024).toFixed(0);
+    $("heapPs").textContent = (s.heap_psram / 1024).toFixed(0);
+  } catch (e) { /* the frame loop already reports a lost connection */ }
+}
+
+function bindSlider(lamp) {
+  const slider = $("s" + lamp), out = $("o" + lamp);
+  let lastSent = 0;
+  const send = () => {
+    out.textContent = slider.value + "%";
+    $("auto").checked = false;
+    post("/api/lamp", { lamp, pct: +slider.value }).catch((e) => { $("err").textContent = e.message; });
+  };
+  slider.addEventListener("input", () => {
+    dragging = lamp;
+    out.textContent = slider.value + "%";
+    const now = performance.now();
+    if (now - lastSent >= SEND_GAP_MS) { lastSent = now; send(); }
+  });
+  slider.addEventListener("change", () => { dragging = -1; send(); });
+}
+
+for (let k = 0; k <= LAMPS; k++) bindSlider(k);
+$("auto").addEventListener("change", (e) =>
+  post("/api/auto", { on: e.target.checked }).catch((err) => { $("err").textContent = err.message; }));
+$("lock").addEventListener("change", (e) =>
+  post("/api/exposure", { lock: e.target.checked }).catch((err) => { $("err").textContent = err.message; }));
+
+$("recal").addEventListener("click", recalibrate);
+
+setInterval(pollState, STATE_MS);
+pollState();
+loadRoad();
+frameLoop();
+</script>
+</body>
+</html>
