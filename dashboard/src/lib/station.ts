@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import type { MqttClient } from "mqtt"
 import { LAMP_NAMES } from "@/config"
 import {
-  ALERT_TEXT, CLASS_TEXT, createLampModel, DEFAULT_CONFIG, FAULT_TEXT, MODE_TEXT, SENSOR_ERROR_TEXT, T, toMs, withStopTimes,
+  ALERT_TEXT, CLASS_TEXT, createLampModel, DEFAULT_CONFIG, FAULT_TEXT, MODE_TEXT, sensorErrors, sensorErrorText, T, toMs, withStopTimes,
   type AlertPayload, type CalibPayload, type Config, type HistoryPayload, type Lamp, type StatePayload,
 } from "@/lib/protocol"
 import { createSimBoard, type SimBoard } from "@/lib/sim"
@@ -118,8 +118,10 @@ export function useStation() {
         if (s.mode) p.mode = s.mode
         const err = s.sensor_error ?? null // the board leaves the field out when every sensor is fine
         if (err !== p.sensorError) {
-          if (err) addLog(SENSOR_ERROR_TEXT[err] ?? `Cảm biến lỗi: ${err}`, "bad")
-          else if (p.sensorError) addLog("Cảm biến đã hoạt động lại bình thường", "ok")
+          // log each fault that appeared, and say when all of them are gone
+          const before = sensorErrors(p.sensorError)
+          for (const code of sensorErrors(err)) if (!before.includes(code)) addLog(sensorErrorText(code), "bad")
+          if (!err && p.sensorError) addLog("Cảm biến đã hoạt động lại bình thường", "ok")
           p.sensorError = err
         }
       } else if (topic === T.energy) {

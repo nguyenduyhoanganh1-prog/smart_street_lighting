@@ -1,7 +1,7 @@
 import { Car, Footprints, Gauge, Hand, MoonStar, TriangleAlert, Wrench } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
-import { MODE_TEXT, SENSOR_ERROR_TEXT, type Lamp, type StatePayload } from "@/lib/protocol"
+import { MODE_TEXT, sensorErrors, sensorErrorText, type Lamp, type StatePayload } from "@/lib/protocol"
 import type { Station } from "@/lib/station"
 
 function Row({ id, icon, title, desc, checked, disabled, onChange }: { id: string; icon: React.ReactNode; title: string; desc: string; checked: boolean; disabled?: boolean; onChange: (v: boolean) => void }) {
@@ -23,6 +23,7 @@ export function ControlPanel({ state, lamps, st, disabled }: { state: StatePaylo
   const mode = state?.mode
   const sim = st.source === "sim" ? st.sim.current : null
   const faulty = lamps?.filter((l) => l.fault) ?? []
+  const errors = sensorErrors(state?.sensor_error)
   return (
     <div className="divide-y divide-border px-5 py-2">
       <Row
@@ -43,15 +44,20 @@ export function ControlPanel({ state, lamps, st, disabled }: { state: StatePaylo
         disabled={disabled}
         onChange={(v) => st.cmd.setForceNight(v)}
       />
-      {(state?.sensor_error || mode === "schedule") && (
-        <p className="flex items-start gap-2 py-3 text-sm font-medium text-destructive">
-          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
-          {state?.sensor_error
-            ? SENSOR_ERROR_TEXT[state.sensor_error] ?? `Cảm biến lỗi: ${state.sensor_error}`
-            : "Cảm biến ánh sáng hoặc camera lỗi, board đang chạy chế độ theo giờ (xem Lịch sử)"}
-          {state?.sensor_error === "bh1750" && mode !== "schedule" && ". Camera vẫn bật đèn theo vùng có người/xe."}
-        </p>
-      )}
+      {errors.length > 0
+        ? errors.map((code) => (
+            <p key={code} className="flex items-start gap-2 py-3 text-sm font-medium text-destructive">
+              <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+              {sensorErrorText(code)}
+              {code.startsWith("bh1750") && !errors.includes("camera") && mode !== "schedule" && ". Camera vẫn bật đèn theo vùng có người/xe."}
+            </p>
+          ))
+        : mode === "schedule" && (
+            <p className="flex items-start gap-2 py-3 text-sm font-medium text-destructive">
+              <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+              Cảm biến ánh sáng hoặc camera lỗi, board đang chạy chế độ theo giờ (xem Lịch sử)
+            </p>
+          )}
       <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3 py-4 text-sm">
         <div>
           <dt className="text-muted-foreground">Chế độ</dt>

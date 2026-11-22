@@ -25,8 +25,19 @@ export type Mode = "auto" | "manual" | "schedule"
 export const MODE_TEXT: Record<string, string> = { auto: "Tự động", manual: "Chỉnh tay", schedule: "Theo giờ" }
 /** Lỗi cảm biến board gửi trong state.sensor_error */
 export const SENSOR_ERROR_TEXT: Record<string, string> = {
-  bh1750: "Cảm biến ánh sáng BH1750 lỗi (mất kết nối hoặc đo tối bất thường ban ngày): ngày/đêm lấy theo giờ",
+  bh1750: "Không đọc được cảm biến ánh sáng BH1750 (mất kết nối): ngày/đêm lấy theo giờ",
+  bh1750_dark:
+    "Cảm biến ánh sáng BH1750 báo giá trị bất thường (tối giữa ban ngày, có thể bị che hoặc hỏng): ngày/đêm lấy theo giờ",
   camera: "Camera hoặc model nhận diện lỗi: đèn chạy theo giờ",
+}
+
+/** state.sensor_error có thể chứa nhiều lỗi, cách nhau dấu phẩy (vd "bh1750_dark,camera") */
+export function sensorErrors(raw: string | null | undefined): string[] {
+  return (raw ?? "").split(",").map((s) => s.trim()).filter(Boolean)
+}
+
+export function sensorErrorText(code: string): string {
+  return SENSOR_ERROR_TEXT[code] ?? `Cảm biến lỗi: ${code}`
 }
 
 export type StatePayload = {
@@ -39,7 +50,7 @@ export type StatePayload = {
   vehicles?: number
   zones?: number[] // các vùng đang có người/xe (1..4)
   fps?: number
-  sensor_error?: string // "bh1750" / "camera"; board bỏ trường này khi mọi cảm biến đều ổn
+  sensor_error?: string // "bh1750" (mất kết nối) / "bh1750_dark" (giá trị bất thường) / "camera"; board bỏ trường này khi mọi cảm biến đều ổn
   t?: number // TẠM (eval 6.4): Unix ms lúc board gửi; web gửi lại qua cmd/latency
 }
 
