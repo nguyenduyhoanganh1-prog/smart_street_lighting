@@ -2,11 +2,10 @@
 
 Mức 1: **1 board ESP32-S3 có camera** vừa chạy AI vừa điều khiển **4 đèn** và đo điện năng từng bóng.
 
-- Board / MCU: ESP32-S3 có khe camera, module chưa chọn `<điền sau khi mua>`
-  (đề xuất: N16R8 kèm OV2640, vd Freenove ESP32-S3-WROOM CAM)
+- Board / MCU: Freenove ESP32-S3 WROOM CAM, module **N8R8** (xác định từ log khởi động 2026-11-19: flash 8 MB, PSRAM octal 8 MB)
 - CPU: Xtensa LX7 dual-core, tối đa 240 MHz
-- RAM: 512 KB SRAM nội + PSRAM `<điền theo module, vd 8 MB>`
-- Flash: `<điền theo module, vd 16 MB>`
+- RAM: 512 KB SRAM nội + PSRAM 8 MB (octal, 80 MHz)
+- Flash: 8 MB (sdkconfig phải là `CONFIG_ESPTOOLPY_FLASHSIZE_8MB`; để 16 MB thì board khởi động lại liên tục)
 - FPU: có (single-precision)
 - Clock: 240 MHz
 - Power source: **2 nguồn riêng, nối chung GND** — ESP32: sạc dự phòng 5 V ≥ 2 A qua USB-C; 4 đèn: adapter 5 V ≥ 1 A. Không đo áp pin.
