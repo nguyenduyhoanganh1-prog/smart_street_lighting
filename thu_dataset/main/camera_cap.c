@@ -49,7 +49,7 @@ esp_err_t camera_cap_init(void)
         .ledc_timer = LEDC_TIMER_0,     /* timer 0 / channel 0 are reserved for the camera clock */
         .ledc_channel = LEDC_CHANNEL_0, /* (lamp_pwm uses timer 1, channels 2..5) */
         .pixel_format = PIXFORMAT_GRAYSCALE, /* the sensor sends YUV, the driver keeps the Y byte only */
-        .frame_size = FRAMESIZE_VGA,
+        .frame_size = FRAMESIZE_QVGA, /* 320x240, must match APP_CAM_SRC_WIDTH/HEIGHT */
         .jpeg_quality = 12,             /* unused for raw gray */
         .fb_count = 2,
         .fb_location = CAMERA_FB_IN_PSRAM,

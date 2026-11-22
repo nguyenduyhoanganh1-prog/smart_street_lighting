@@ -15,11 +15,12 @@
  * The camera uses its own SCCB bus (GPIO 4/5) on I2C port 1 by default,
  * so the sensors use I2C port 0. */
 #define APP_I2C_PORT       0
-#define APP_I2C_SDA_GPIO   41
-#define APP_I2C_SCL_GPIO   42
+#define APP_I2C_SDA_GPIO   39      /* real wiring (hdr 33); schematic shows SDA on 40, swapped on the board */
+#define APP_I2C_SCL_GPIO   40      /* real wiring (hdr 34). 39/40 are also SD-card pins: no SD card inserted */
 #define APP_I2C_FREQ_HZ    100000U /* 100 kHz: safe for breadboard wiring */
 
 #define APP_BH1750_ADDR    0x23U   /* ADDR pin to GND */
+#define APP_BH1750_ADDR_ALT 0x5CU  /* ADDR pin to 3.3 V: tried when 0x23 does not answer */
 #define APP_INA219_ADDR_1  0x40U   /* no pad bridged */
 #define APP_INA219_ADDR_2  0x41U   /* A0 */
 #define APP_INA219_ADDR_3  0x44U   /* A1 */
@@ -27,8 +28,8 @@
 #define APP_INA219_SHUNT_MOHM 100U /* "R100" printed on the module */
 
 /* ---- Lamp PWM -> ULN2003 IN1..IN4 (high = lamp on) ---- */
-#define APP_LAMP1_GPIO     1
-#define APP_LAMP2_GPIO     14
+#define APP_LAMP1_GPIO     19   /* USB D- pin: LEDC turns the native USB port off, flash via the UART (COM) port */
+#define APP_LAMP2_GPIO     20   /* USB D+ pin: same note as lamp 1 */
 #define APP_LAMP3_GPIO     21
 #define APP_LAMP4_GPIO     47
 #define APP_PWM_FREQ_HZ    2000U   /* 2 kHz: fast enough for the eye, slow enough for the ULN2003 (Darlington) */

@@ -1,6 +1,6 @@
 /**
  * @file main.c
- * @brief thu_dataset: capture 640x360 grayscale frames to an SD card from a WiFi web page.
+ * @brief thu_dataset: capture 320x240 grayscale frames to an SD card from a WiFi web page.
  *
  *   1. Join WiFi "StreetLight-Dataset" (see tune_config.h)
  *   2. Open http://192.168.4.1

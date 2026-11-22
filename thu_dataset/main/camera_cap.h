@@ -2,8 +2,9 @@
  * @file camera_cap.h
  * @brief OV2640 camera in 8-bit grayscale, one owner at a time.
  *
- * The sensor runs at VGA (640x480). camera_cap_crop() returns a view of the middle 360 rows,
- * i.e. the 640x360 frame that is stored on the SD card and shown on the web page.
+ * The sensor runs at QVGA (320x240). camera_cap_crop() returns the stored-frame view
+ * (APP_FRAME_WIDTH x APP_FRAME_HEIGHT, currently the whole 320x240 frame) that is saved on the
+ * SD card and shown on the web page.
  * A mutex makes sure the capture task and the web preview never use the camera together.
  */
 #pragma once
@@ -18,7 +19,7 @@
 extern "C" {
 #endif
 
-/** Init the driver (grayscale, VGA, 2 frame buffers in PSRAM) and check the frame size. */
+/** Init the driver (grayscale, QVGA, 2 frame buffers in PSRAM) and check the frame size. */
 esp_err_t camera_cap_init(void);
 
 /**
@@ -31,7 +32,7 @@ camera_fb_t *camera_cap_acquire(uint32_t timeout_ms);
 /** Return the frame buffer and release the camera. */
 void camera_cap_release(camera_fb_t *fb);
 
-/** Fill *out with a 640x360 view (middle rows) of a frame from camera_cap_acquire(). No copy. */
+/** Fill *out with the stored-frame view (middle rows) of a frame from camera_cap_acquire(). No copy. */
 void camera_cap_crop(const camera_fb_t *fb, camera_fb_t *out);
 
 /**

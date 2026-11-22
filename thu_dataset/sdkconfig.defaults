@@ -1,11 +1,19 @@
-# Same module as streetlight-wifi: Freenove ESP32-S3 WROOM N16R8 (16 MB flash, 8 MB octal PSRAM).
-# Run `idf.py set-target esp32s3` first. If your module is NOT N16R8, change or
-# remove the flash/PSRAM lines, otherwise the board may fail to boot.
-CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+# Board actually detected: ESP32-S3 with 8 MB flash + 8 MB octal PSRAM (N8R8).
+# 8 MB is also safe on an N16R8 module (it just uses the first half of the flash).
+# Declaring MORE flash than the chip has makes the app abort at boot:
+#   "Detected size(8192k) smaller than the size in the binary image header".
+# Run `idf.py set-target esp32s3` first.
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
 CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_SPIRAM_SPEED_80M=y
+
+# 240 MHz: the camera driver copies every grayscale frame byte by byte (see APP_CAM_XCLK_HZ)
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+# Camera copy task on core 1: WiFi (prio 23) and the HTTP server live on core 0. Sharing core 0
+# starved the copy as soon as a browser connected ("cam_hal: FB-SIZE: 0 != 307200").
+CONFIG_CAMERA_CORE1=y
 
 CONFIG_FREERTOS_HZ=1000
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=6144

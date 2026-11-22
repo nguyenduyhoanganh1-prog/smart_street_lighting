@@ -34,7 +34,7 @@ Cài đặt lưu trong NVS nên giữ lại sau khi mất điện. Giới hạn 
 | I2C | SDA/SCL theo `APP_I2C_SDA_GPIO` / `APP_I2C_SCL_GPIO`, 100 kHz, pull-up nội bật |
 | BH1750 | 0x23 |
 | 4 × INA219 | 0x40, 0x41, 0x44, 0x45 (shunt 0.1 Ω, ±40 mV, trung bình 128 mẫu) |
-| 4 đèn | GPIO 1, 14, 21, 47 → ULN2003 IN1..IN4, PWM 2 kHz |
+| 4 đèn | Đèn 1..4 = GPIO 19, 20, 21, 47 → ULN2003 IN1..IN4, PWM 2 kHz |
 
 PWM 2 kHz vì ULN2003 (Darlington) chuyển mạch chậm. Nếu chân I2C trong file không khớp với
 board thì bus scan trong log serial sẽ không thấy thiết bị nào: kiểm tra `app_config.h` trước.

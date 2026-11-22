@@ -1,8 +1,9 @@
 """Convert frames saved by thu_dataset into PNG files.
 
-The current firmware stores 640x360 8-bit grayscale frames as binary PGM (``.pgm``). Older
+The current firmware stores 320x240 8-bit grayscale frames as binary PGM (``.pgm``); older
+sessions used 640x360. A PGM header carries its own size, so both convert as they are. The oldest
 sessions stored raw RGB565 (``.rgb565``, big-endian: the first byte of every pixel is the high
-byte); those are still converted. Edge Impulse cannot read either format, so this script writes
+byte, no header, so their size comes from --width/--height); those are still converted. Edge Impulse cannot read either format, so this script writes
 PNG images and keeps the file name, e.g. ``nguoi.0007.pgm`` becomes ``nguoi.0007.png`` (Edge
 Impulse reads the label from the text before the first dot).
 
@@ -22,6 +23,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+# Size of the headerless legacy .rgb565 frames only. PGM files are read at their own size.
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 360
 BYTES_PER_PIXEL = 2
@@ -32,10 +34,10 @@ INPUT_SUFFIXES = (PGM_SUFFIX, RAW_SUFFIX)
 # ============================== PASTE YOUR PATHS HERE ==============================
 # Folder (searched recursively) or single file to convert. Paste it between the quotes.
 # Quotes pasted from "Copy as path" are fine. Do not end a path with a backslash.
-INPUT_PATH = r"D:\dataset\phien_001"
+INPUT_PATH = r"E:\TKHTN\dataset\phien_009"
 
 # Optional: folder for the PNG files. Leave empty to write each PNG next to its source file.
-OUTPUT_FOLDER = r"D:\dataset\phien_001"
+OUTPUT_FOLDER = r"E:\TKHTN\dataset\phien_009\convert"
 # ===================================================================================
 
 
@@ -67,27 +69,26 @@ def rgb565_be_to_rgb888(raw: bytes, width: int, height: int) -> np.ndarray:
     return np.stack([red, green, blue], axis=-1).astype(np.uint8)
 
 
-def load_pgm(source: Path, width: int, height: int) -> Image.Image:
-    """Load a binary PGM frame and check that it is an 8-bit grayscale image of the expected size.
+def load_pgm(source: Path) -> Image.Image:
+    """Load a binary PGM frame and check that it is an 8-bit grayscale image.
+
+    The size is taken from the PGM header, so frames from every firmware version (640x360,
+    320x240, ...) load without extra options.
 
     Args:
         source: PGM file written by the board.
-        width: Expected image width in pixels.
-        height: Expected image height in pixels.
 
     Returns:
         The image in Pillow mode ``"L"`` (8-bit grayscale).
 
     Raises:
-        ValueError: If the file is not a ``width`` x ``height`` grayscale PGM.
+        ValueError: If the file is not an 8-bit grayscale PGM.
         OSError: If the file cannot be read.
     """
     with Image.open(source) as image:
         image.load()
         if image.format != "PPM" or image.mode != "L":
             raise ValueError(f"not an 8-bit grayscale PGM (format {image.format}, mode {image.mode})")
-        if image.size != (width, height):
-            raise ValueError(f"expected {width}x{height}, got {image.size[0]}x{image.size[1]}")
         return image.copy()
 
 
@@ -97,15 +98,16 @@ def convert_file(source: Path, destination: Path, width: int, height: int) -> No
     Args:
         source: Frame file written by the board.
         destination: PNG file to write (its folder is created if needed).
-        width: Image width in pixels.
-        height: Image height in pixels.
+        width: Image width in pixels (``.rgb565`` only; a PGM uses its own header).
+        height: Image height in pixels (``.rgb565`` only).
 
     Raises:
-        ValueError: If the file content does not match ``width`` x ``height``.
+        ValueError: If a PGM is not 8-bit grayscale, or a ``.rgb565`` file does not match
+            ``width`` x ``height``.
         OSError: If the file cannot be read or written.
     """
     if source.suffix.lower() == PGM_SUFFIX:
-        image = load_pgm(source, width, height)
+        image = load_pgm(source)
     else:
         image = Image.fromarray(rgb565_be_to_rgb888(source.read_bytes(), width, height), mode="RGB")
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -142,8 +144,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                              "default: INPUT_PATH at the top of this file")
     parser.add_argument("-o", "--output", type=Path, default=None,
                         help="output folder (default: OUTPUT_FOLDER, else next to each input file)")
-    parser.add_argument("--width", type=int, default=FRAME_WIDTH, help=f"frame width (default {FRAME_WIDTH})")
-    parser.add_argument("--height", type=int, default=FRAME_HEIGHT, help=f"frame height (default {FRAME_HEIGHT})")
+    parser.add_argument("--width", type=int, default=FRAME_WIDTH,
+                        help=f".rgb565 frame width (default {FRAME_WIDTH}; PGM files use their header)")
+    parser.add_argument("--height", type=int, default=FRAME_HEIGHT,
+                        help=f".rgb565 frame height (default {FRAME_HEIGHT}; PGM files use their header)")
     return parser.parse_args(argv)
 
 

@@ -1,4 +1,4 @@
-# thu_dataset: capture 640x360 camera frames to an SD card, controlled from a WiFi web page.
+# thu_dataset: capture 320x240 camera frames to an SD card, controlled from a WiFi web page.
 # Self-contained ESP-IDF app (own WiFi access point, no router, no MQTT).
 # Only the lamp_pwm driver is shared with streetlight-wifi; the other components found in that
 # folder (bh1750, ina219, sl_codec) are not required by main, so they are not built.

@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "bh1750.h"
+#include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -31,10 +32,10 @@ static bool s_bh_online;
 static bool s_ina_online[APP_LAMP_COUNT];
 static int64_t s_last_retry_us;
 
-static void scan_bus(void)
+/** Scan the bus; returns how many devices answered. */
+static unsigned scan_bus(int sda, int scl)
 {
-    ESP_LOGI(TAG, "I2C scan (port %d, SDA=GPIO%d, SCL=GPIO%d):",
-             APP_I2C_PORT, APP_I2C_SDA_GPIO, APP_I2C_SCL_GPIO);
+    ESP_LOGI(TAG, "I2C scan (port %d, SDA=GPIO%d, SCL=GPIO%d):", APP_I2C_PORT, sda, scl);
     unsigned found = 0;
     for (uint8_t addr = I2C_ADDR_FIRST; addr <= I2C_ADDR_LAST; addr++) {
         if (i2c_master_probe(s_bus, addr, I2C_PROBE_TIMEOUT_MS) == ESP_OK) {
@@ -47,6 +48,39 @@ static void scan_bus(void)
     } else {
         ESP_LOGI(TAG, "  %u device(s); expected 0x23, 0x40, 0x41, 0x44, 0x45", found);
     }
+    return found;
+}
+
+/** Create the bus on the given pins (internal pull-ups on: modules also have their own). */
+static esp_err_t create_bus(int sda, int scl)
+{
+    const i2c_master_bus_config_t bus_cfg = {
+        .i2c_port = APP_I2C_PORT,
+        .sda_io_num = sda,
+        .scl_io_num = scl,
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .glitch_ignore_cnt = I2C_GLITCH_FILTER,
+        .flags.enable_internal_pullup = true,
+    };
+    return i2c_new_master_bus(&bus_cfg, &s_bus);
+}
+
+/**
+ * Wiring help when nothing answers: read both lines as plain inputs, pull-ups OFF. A healthy bus
+ * (3.3 V + external pull-ups) reads 1/1; a 0 means that line is shorted to GND or the module has
+ * no power; 0/0 usually means the modules are unpowered.
+ */
+static void log_line_levels(int sda, int scl)
+{
+    const gpio_config_t cfg = {
+        .pin_bit_mask = (1ULL << sda) | (1ULL << scl),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+    };
+    (void)gpio_config(&cfg);
+    ESP_LOGW(TAG, "  idle level without internal pull-up: GPIO%d=%d GPIO%d=%d (1/1 = pulled up by the modules, 0 = stuck low / no power)",
+             sda, gpio_get_level(sda), scl, gpio_get_level(scl));
 }
 
 /* verbose: warn on failure (boot); quiet retries only log at debug level */
@@ -64,9 +98,20 @@ static void log_init(const char *name, uint8_t addr, esp_err_t err, bool verbose
 static void init_offline_devices(bool verbose)
 {
     if (!s_bh_online) {
-        const esp_err_t err = bh1750_init(&s_bh, s_bus, APP_BH1750_ADDR, APP_I2C_FREQ_HZ);
+        esp_err_t err = bh1750_init(&s_bh, s_bus, APP_BH1750_ADDR, APP_I2C_FREQ_HZ);
+        uint8_t used = APP_BH1750_ADDR;
+        if (err != ESP_OK) { /* ADDR pin left high (or touched 3.3 V) moves the sensor to 0x5C */
+            const esp_err_t alt = bh1750_init(&s_bh, s_bus, APP_BH1750_ADDR_ALT, APP_I2C_FREQ_HZ);
+            if (alt == ESP_OK) {
+                err = alt;
+                used = APP_BH1750_ADDR_ALT;
+                if (verbose) {
+                    ESP_LOGW(TAG, "BH1750 answers at 0x%02X: its ADD pin is at 3.3 V, wire ADD to GND for 0x23", used);
+                }
+            }
+        }
         s_bh_online = (err == ESP_OK);
-        log_init("BH1750", APP_BH1750_ADDR, err, verbose);
+        log_init("BH1750", used, err, verbose);
     }
     for (unsigned k = 0; k < APP_LAMP_COUNT; k++) {
         if (s_ina_online[k]) {
@@ -83,21 +128,36 @@ static void init_offline_devices(bool verbose)
 
 esp_err_t sensor_hub_init(void)
 {
-    const i2c_master_bus_config_t bus_cfg = {
-        .i2c_port = APP_I2C_PORT,
-        .sda_io_num = APP_I2C_SDA_GPIO,
-        .scl_io_num = APP_I2C_SCL_GPIO,
-        .clk_source = I2C_CLK_SRC_DEFAULT,
-        .glitch_ignore_cnt = I2C_GLITCH_FILTER,
-        .flags.enable_internal_pullup = true, /* modules also have 10k pull-ups */
-    };
-    const esp_err_t err = i2c_new_master_bus(&bus_cfg, &s_bus);
+    esp_err_t err = create_bus(APP_I2C_SDA_GPIO, APP_I2C_SCL_GPIO);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "i2c_new_master_bus failed: %s", esp_err_to_name(err));
         s_bus = NULL;
         return err;
     }
-    scan_bus();
+    if (scan_bus(APP_I2C_SDA_GPIO, APP_I2C_SCL_GPIO) == 0U) {
+        /* Nothing answered: SDA and SCL may be swapped on the board. Try the other order once. */
+        log_line_levels(APP_I2C_SDA_GPIO, APP_I2C_SCL_GPIO);
+        (void)i2c_del_master_bus(s_bus);
+        s_bus = NULL;
+        err = create_bus(APP_I2C_SCL_GPIO, APP_I2C_SDA_GPIO);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "i2c_new_master_bus (swapped) failed: %s", esp_err_to_name(err));
+            return err;
+        }
+        if (scan_bus(APP_I2C_SCL_GPIO, APP_I2C_SDA_GPIO) > 0U) {
+            ESP_LOGW(TAG, "SDA/SCL ARE SWAPPED on this board: set APP_I2C_SDA_GPIO=%d, APP_I2C_SCL_GPIO=%d in app_config.h",
+                     APP_I2C_SCL_GPIO, APP_I2C_SDA_GPIO);
+        } else {
+            ESP_LOGE(TAG, "nothing on the bus in either order: check 3.3 V on the modules, GND, and the SDA/SCL wires");
+            (void)i2c_del_master_bus(s_bus);
+            s_bus = NULL;
+            err = create_bus(APP_I2C_SDA_GPIO, APP_I2C_SCL_GPIO); /* back to the configured pins */
+            if (err != ESP_OK) {
+                s_bus = NULL;
+                return err;
+            }
+        }
+    }
     init_offline_devices(true);
     s_last_retry_us = esp_timer_get_time();
     return ESP_OK;

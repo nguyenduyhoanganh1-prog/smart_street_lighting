@@ -27,7 +27,7 @@ header{display:flex;justify-content:space-between;align-items:center;gap:12px;ma
 .pill.bad{color:var(--danger);border-color:var(--danger)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
 .card h2{font-size:.8rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
-.preview{width:100%;aspect-ratio:16/9;background:#000;border-radius:8px;display:block;object-fit:contain}
+.preview{width:100%;aspect-ratio:4/3;background:#000;border-radius:8px;display:block;object-fit:contain}
 .note{font-size:12.5px;color:var(--muted);margin:6px 0 0}
 .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .row+.row{margin-top:10px}
@@ -57,7 +57,7 @@ input[type=number]{font:inherit;width:90px;padding:8px;border:1px solid var(--li
 </head>
 <body>
 <header>
-  <h1>Thu dataset 640×360</h1>
+  <h1>Thu dataset 320×240</h1>
   <span id="sdPill" class="pill">SD ...</span>
 </header>
 
@@ -66,7 +66,7 @@ input[type=number]{font:inherit;width:90px;padding:8px;border:1px solid var(--li
 <section class="card">
   <h2>Xem trước</h2>
   <img id="preview" class="preview" alt="Ảnh xem trước từ camera">
-  <p class="note">Ảnh xem trước chỉ là JPEG xám 160×90 để nhìn nhanh. Ảnh lưu trên thẻ nhớ là ảnh xám 8-bit 640×360 (PGM), không nén.</p>
+  <p class="note">Ảnh xem trước chỉ là JPEG xám 160×120 để nhìn nhanh. Ảnh lưu trên thẻ nhớ là ảnh xám 8-bit 320×240 (PGM), không nén.</p>
 </section>
 
 <section class="card">

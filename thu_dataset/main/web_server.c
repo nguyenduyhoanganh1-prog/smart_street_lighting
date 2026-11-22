@@ -31,6 +31,8 @@
 #define PREVIEW_JPEG_BYTES  (16U * 1024U) /* a 160x90 gray JPEG is a few KB; this is generous */
 #define PREVIEW_SCALE       (APP_FRAME_WIDTH / APP_PREVIEW_WIDTH)
 #define PREVIEW_LOCK_MS     300U
+#define FRAME_LOCK_MS       1000U
+#define LAMPS_HDR_CAP       24U  /* "100,100,100,100" + NUL */
 #define HTTPD_STACK_SIZE    8192U
 #define MAX_URI_HANDLERS    12U
 #define MAX_OPEN_SOCKETS    7U
@@ -241,6 +243,48 @@ static esp_err_t snapshot_get(httpd_req_t *req)
     return httpd_resp_send(req, (const char *)s_preview.buf, (ssize_t)s_preview.len);
 }
 
+/*
+ * Full stored frame as binary PGM for tools/pull_dataset.py (dataset saved on the PC instead of
+ * the SD card). Label, lamp levels and exposure lock travel in X- headers so the script can write
+ * index.csv. The camera stays taken while the ~75 KB go out (about 0.1 s over the AP): in this
+ * mode the script is the only one grabbing frames, so the preview just waits a moment.
+ */
+static esp_err_t frame_get(httpd_req_t *req)
+{
+    capture_status_t st;
+    capture_ctrl_get_status(&st);
+    char pgm_header[GRAY_PGM_HEADER_CAP];
+    const int header_len = gray_pgm_header(pgm_header, sizeof(pgm_header), APP_FRAME_WIDTH, APP_FRAME_HEIGHT);
+    char lamps[LAMPS_HDR_CAP];
+    const int lamps_len = snprintf(lamps, sizeof(lamps), "%u,%u,%u,%u", (unsigned)st.lamp_pct[0],
+                                   (unsigned)st.lamp_pct[1], (unsigned)st.lamp_pct[2], (unsigned)st.lamp_pct[3]);
+    if (header_len < 0 || lamps_len < 0 || (size_t)lamps_len >= sizeof(lamps)) {
+        return reply_error(req, "500 Internal Server Error", "frame failed");
+    }
+
+    camera_fb_t *fb = camera_cap_acquire(FRAME_LOCK_MS);
+    if (fb == NULL) {
+        return reply_error(req, "503 Service Unavailable", "camera busy");
+    }
+    camera_fb_t view;
+    camera_cap_crop(fb, &view);
+
+    httpd_resp_set_type(req, "image/x-portable-graymap");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    httpd_resp_set_hdr(req, "X-Label", st.label);
+    httpd_resp_set_hdr(req, "X-Lamps", lamps);
+    httpd_resp_set_hdr(req, "X-Exposure-Locked", st.exposure_locked ? "1" : "0");
+    esp_err_t err = httpd_resp_send_chunk(req, pgm_header, header_len);
+    if (err == ESP_OK) {
+        err = httpd_resp_send_chunk(req, (const char *)view.buf, (ssize_t)view.len);
+    }
+    camera_cap_release(fb);
+    if (err == ESP_OK) {
+        err = httpd_resp_send_chunk(req, NULL, 0); /* end of the chunked response */
+    }
+    return err;
+}
+
 static esp_err_t capture_post(httpd_req_t *req)
 {
     const esp_err_t err = capture_ctrl_capture_now();
@@ -374,6 +418,7 @@ esp_err_t web_server_start(void)
     const httpd_uri_t routes[] = {
         { .uri = "/", .method = HTTP_GET, .handler = index_get },
         { .uri = "/snapshot.jpg", .method = HTTP_GET, .handler = snapshot_get },
+        { .uri = "/frame.pgm", .method = HTTP_GET, .handler = frame_get },
         { .uri = "/api/status", .method = HTTP_GET, .handler = status_get },
         { .uri = "/api/capture", .method = HTTP_POST, .handler = capture_post },
         { .uri = "/api/auto", .method = HTTP_POST, .handler = auto_post },

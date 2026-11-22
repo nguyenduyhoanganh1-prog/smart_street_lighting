@@ -3,7 +3,7 @@
  * @brief SD card storage of the dataset (1-bit SDMMC, FAT).
  *
  * Layout:
- *   /sdcard/dataset/phien_001/nguoi.0001.pgm      frames, 640x360 8-bit grayscale (binary PGM, P5)
+ *   /sdcard/dataset/phien_001/nguoi.0001.pgm      frames, 320x240 8-bit grayscale (binary PGM, P5)
  *   /sdcard/dataset/phien_001/session.json        written once when the session starts
  *   /sdcard/dataset/phien_001/index.csv           one line per frame (label, lamp levels, ...)
  *
@@ -30,7 +30,10 @@ typedef struct {
     int64_t epoch_s;            /* Unix seconds, 0 when the clock was not set */
 } sd_frame_meta_t;
 
-/** Mount the card. Never formats it. Insert the card BEFORE power-up: no hot-plug. */
+/**
+ * Mount the card. Never formats it. Insert the card BEFORE power-up: no hot-plug.
+ * After a failed access, begin_session/save_frame re-initialise the card and retry once.
+ */
 esp_err_t sd_store_mount(void);
 
 bool sd_store_is_mounted(void);
@@ -47,7 +50,7 @@ esp_err_t sd_store_begin_session(uint32_t *session_no, int64_t epoch_s, bool exp
 /**
  * Write one grayscale frame as a PGM file (small header, then the pixels) and append its line to
  * index.csv. A partly written frame file is removed again.
- * @param len       must be APP_FRAME_BYTES (640 x 360 pixels, one byte each)
+ * @param len       must be APP_FRAME_BYTES (320 x 240 pixels, one byte each)
  * @param name_out  receives the file name, e.g. "nguoi.0007.pgm"
  */
 esp_err_t sd_store_save_frame(uint32_t session_no, const char *label, uint32_t seq,

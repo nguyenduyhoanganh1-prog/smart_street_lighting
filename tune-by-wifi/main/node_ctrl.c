@@ -384,7 +384,7 @@ esp_err_t node_ctrl_init(void)
         s_p100[k].since_ms = -1;
     }
 
-    esp_err_t err = lamp_pwm_init(LAMP_GPIOS, APP_LAMP_COUNT, APP_PWM_FREQ_HZ);
+    esp_err_t err = lamp_pwm_init(LAMP_GPIOS, APP_LAMP_COUNT, APP_PWM_FREQ_HZ, APP_LAMP_ACTIVE_LOW != 0);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "lamp PWM init failed: %s (check APP_LAMPx_GPIO)", esp_err_to_name(err));
     }
