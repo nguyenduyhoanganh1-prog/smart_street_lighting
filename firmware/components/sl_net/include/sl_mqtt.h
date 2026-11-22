@@ -3,7 +3,7 @@
  * @brief MQTT/TLS client for the streetlight node (HiveMQ Cloud, esp-mqtt).
  *
  * Topics (prefix "streetlight/"), see dashboard/src/lib/protocol.ts:
- *   publish   online (LWT), state, energy, energy/history, config, alert, alert/image
+ *   publish   online (LWT), state, energy, energy/history, config, alert, alert/image, calib, calib/image
  *   subscribe cmd/#  -> delivered to the app through sl_mqtt_wait_event()
  *
  * All publish functions are thread-safe and return ESP_ERR_INVALID_STATE while
@@ -71,6 +71,12 @@ esp_err_t sl_mqtt_publish_alert(const sl_alert_t *alert);
 esp_err_t sl_mqtt_clear_alert(void);
 /** Publish a JPEG snapshot (base64) to alert/image, retained */
 esp_err_t sl_mqtt_publish_image(const uint8_t *jpeg, size_t len);
+/**
+ * Publish a road calibration: the JPEG of the calibration frame (base64) to calib/image, then the
+ * numbers to calib, both retained so a page opened later still gets the last one.
+ * jpeg may be NULL (numbers only). Blocks on TLS: network task only.
+ */
+esp_err_t sl_mqtt_publish_calib(const sl_calib_t *calib, const uint8_t *jpeg, size_t len);
 
 #ifdef __cplusplus
 }

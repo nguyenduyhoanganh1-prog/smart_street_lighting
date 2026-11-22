@@ -27,6 +27,10 @@ extern "C" {
 #define SL_LUX_MIN_GAP      20
 #define SL_FADE_UP_MAX_MS   2000
 #define SL_FADE_DOWN_MAX_MS 10000
+#define SL_BASE_MIN_PCT     10  /* night base level of a lamp with nobody near it */
+#define SL_BASE_MAX_PCT     100
+#define SL_STOP_TIME_MIN_S  10    /* stopped-object alert: still this long before the alert */
+#define SL_STOP_TIME_MAX_S  1800
 
 typedef enum {
     SL_MODE_AUTO = 0,
@@ -45,7 +49,8 @@ typedef struct {
     uint16_t vehicles;
     uint8_t zone_mask;           /* bit0 = zone 1 ... bit3 = zone 4 */
     float fps;
-    const char *sensor_error;    /* "bh1750" / "camera", NULL when none */
+    const char *sensor_error;    /* "bh1750" (offline) / "bh1750_dark" (dark by day) / "camera", NULL when none */
+    int64_t t_unix_ms;           /* send time, Unix ms (latency test, plans/eval.md 6.4); 0 = omit */
 } sl_state_t;
 
 /** One lamp inside streetlight/energy */
@@ -67,9 +72,26 @@ typedef struct {
     uint16_t lux_day;
     uint16_t fade_up_ms;
     uint16_t fade_down_ms;
+    uint16_t base_pct;     /* night base level, SL_BASE_MIN_PCT..SL_BASE_MAX_PCT % */
+    uint16_t stop_alert;   /* stopped-object alert on (1) / off (0) */
+    uint16_t stop_time_s;  /* still this long -> alert, SL_STOP_TIME_MIN_S..SL_STOP_TIME_MAX_S */
     char night_start[SL_HHMM_LEN];
     char night_end[SL_HHMM_LEN];
 } sl_config_t;
+
+#define SL_ALERT_MAX_OBJS 10 /* = DETECTOR_MAX_OBJECTS */
+
+/** One detection in the alert picture (vat_dung): all of them get a dot on the dashboard */
+typedef struct {
+    float x;               /* 0..1 of the image width */
+    float y;               /* 0..1 of the image height */
+    bool vehicle;          /* false = person */
+    uint8_t score;         /* % */
+    uint8_t zone;          /* 1..4, 0 = omit (off the road) */
+    int64_t since;         /* Unix seconds it has been still since, 0 = omit (no SNTP time) */
+    bool has_still;        /* still_s valid: the tracker follows this vehicle */
+    uint32_t still_s;      /* still for this long when sent; needs no clock, so it works without SNTP */
+} sl_alert_obj_t;
 
 /** Payload of streetlight/alert */
 typedef struct {
@@ -80,7 +102,35 @@ typedef struct {
     int64_t since;         /* Unix seconds, 0 = omit */
     const char *status;    /* NULL = omit */
     const char *msg;       /* NULL = omit */
+    bool has_pos;          /* x, y, score below are valid (vat_dung: where the object is in alert/image) */
+    float x;               /* object centre, 0..1 of the image width */
+    float y;               /* 0..1 of the image height */
+    uint8_t score;         /* detection confidence, % */
+    uint32_t still_s;      /* has_pos: still for this long when sent (works without SNTP) */
+    uint8_t obj_count;     /* objs[] below: every detection of the picture's frame, 0 = omit */
+    sl_alert_obj_t objs[SL_ALERT_MAX_OBJS];
 } sl_alert_t;
+
+/**
+ * Payload of streetlight/calib: result of one road calibration, in pixels of the calibration frame
+ * (the JPEG sent to streetlight/calib/image). Same fields as GET /api/road of the ai-stream page.
+ * Lines are y = a * x + b, except the left end x = a * y + b.
+ */
+typedef struct {
+    bool found;                       /* false: only state, w, h and t are sent */
+    uint16_t width, height;
+    float top_a, top_b;               /* road edges */
+    float bottom_a, bottom_b;
+    bool has_left;
+    float left_a, left_b;
+    bool has_kerb_top;                /* outer kerb edges; a missing side is sent as null */
+    float kerb_top_a, kerb_top_b;
+    bool has_kerb_bottom;
+    float kerb_bottom_a, kerb_bottom_b;
+    int16_t x_min, x_max;
+    float bounds[SL_ZONE_COUNT - 1];  /* x of the zone cuts */
+    int64_t t_sec;                    /* Unix seconds of the calibration, 0 = clock unknown (omitted) */
+} sl_calib_t;
 
 /* ---------------- Commands received from the dashboard ---------------- */
 
@@ -90,6 +140,8 @@ typedef enum {
     SL_CMD_FORCE_NIGHT,    /* streetlight/cmd/force_night */
     SL_CMD_ALERT_ACK,      /* streetlight/cmd/alert_ack */
     SL_CMD_CONFIG,         /* streetlight/cmd/config */
+    SL_CMD_RECALIBRATE,    /* streetlight/cmd/recalibrate: find the road again (any non-empty payload) */
+    SL_CMD_LATENCY,        /* streetlight/cmd/latency: {"t":<state t>,"rx":<dashboard got it>} (eval only) */
 } sl_cmd_type_t;
 
 /* Bits of sl_config_patch_t.fields: which values the dashboard wants to change */
@@ -99,21 +151,30 @@ typedef enum {
 #define SL_CFG_FADE_DOWN   (1U << 3)
 #define SL_CFG_NIGHT_START (1U << 4)
 #define SL_CFG_NIGHT_END   (1U << 5)
+#define SL_CFG_BASE        (1U << 6)
+#define SL_CFG_STOP_ALERT  (1U << 8)
+#define SL_CFG_STOP_TIME   (1U << 9)
 #define SL_CFG_RESET       (1U << 7)
 
 typedef struct {
-    uint8_t fields;        /* SL_CFG_* bits */
+    uint16_t fields;       /* SL_CFG_* bits */
     sl_config_t value;     /* only fields flagged above are valid (already clamped) */
 } sl_config_patch_t;
 
 typedef struct {
     sl_cmd_type_t type;
+    /* Latency log (plans/eval.md 6.5). sent_unix_ms: optional "t" of a JSON command, Unix ms when the
+     * dashboard sent it (0 = not given). rx_unix_ms: set by sl_mqtt.c the moment the message arrived
+     * (the decoder leaves it 0). */
+    int64_t sent_unix_ms;
+    int64_t rx_unix_ms;
     union {
         sl_mode_t mode;                            /* SL_CMD_MODE: auto/manual only */
         struct { uint8_t lamp; uint8_t duty; } lamp; /* SL_CMD_LAMP: lamp 1..4, duty 0..100 */
         bool force_night;                          /* SL_CMD_FORCE_NIGHT */
         char alert_id[SL_ALERT_ID_LEN];            /* SL_CMD_ALERT_ACK */
         sl_config_patch_t config;                  /* SL_CMD_CONFIG */
+        struct { int64_t board_ms; int64_t web_ms; } latency; /* SL_CMD_LATENCY: Unix ms */
     } u;
 } sl_cmd_t;
 
@@ -130,6 +191,7 @@ int sl_codec_encode_history(char *buf, size_t cap, int64_t t_sec,
                             const uint32_t mwh[SL_LAMP_COUNT][SL_HISTORY_HOURS]);
 int sl_codec_encode_config(char *buf, size_t cap, const sl_config_t *cfg);
 int sl_codec_encode_alert(char *buf, size_t cap, const sl_alert_t *alert);
+int sl_codec_encode_calib(char *buf, size_t cap, const sl_calib_t *calib);
 
 /**
  * Decode one command.

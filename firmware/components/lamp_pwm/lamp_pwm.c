@@ -93,7 +93,7 @@ static esp_err_t start_fade(unsigned lamp, uint8_t percent, uint32_t fade_ms, bo
     return err;
 }
 
-esp_err_t lamp_pwm_init(const int gpios[], unsigned count, uint32_t freq_hz)
+esp_err_t lamp_pwm_init(const int gpios[], unsigned count, uint32_t freq_hz, bool active_low)
 {
     if (gpios == NULL || count == 0U || count > LAMP_PWM_MAX_CHANNELS || freq_hz == 0U) {
         return ESP_ERR_INVALID_ARG;
@@ -119,6 +119,7 @@ esp_err_t lamp_pwm_init(const int gpios[], unsigned count, uint32_t freq_hz)
             .timer_sel = LAMP_LEDC_TIMER,
             .duty = 0,
             .hpoint = 0,
+            .flags.output_invert = active_low ? 1U : 0U,
         };
         ESP_RETURN_ON_ERROR(ledc_channel_config(&ch_cfg), TAG, "channel %u config", k);
         s_lamps[k] = (lamp_channel_t){ 0 };
@@ -127,7 +128,8 @@ esp_err_t lamp_pwm_init(const int gpios[], unsigned count, uint32_t freq_hz)
 
     s_count = count;
     s_ready = true;
-    ESP_LOGI(TAG, "%u lamps ready, %u Hz, 13-bit", count, (unsigned)freq_hz);
+    ESP_LOGI(TAG, "%u lamps ready, %u Hz, 13-bit, %s", count, (unsigned)freq_hz,
+             active_low ? "active-low (inverted)" : "active-high");
     return ESP_OK;
 }
 

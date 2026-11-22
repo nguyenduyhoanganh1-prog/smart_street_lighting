@@ -13,7 +13,7 @@
 #define NODE_NAMESPACE   "node"
 #define KEY_CONFIG       "cfg"
 #define KEY_ENERGY       "energy"
-#define CONFIG_VERSION   1U
+#define CONFIG_VERSION   3U /* 2: + base_pct, 3: + stop_alert/stop_time_s. Older blob ignored -> defaults once */
 #define ENERGY_VERSION   1U
 
 typedef struct {

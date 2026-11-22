@@ -23,8 +23,14 @@ extern "C" {
 
 #define LAMP_PWM_MAX_CHANNELS 4
 
-/** Configure the LEDC timer and one channel per GPIO; all lamps start off. */
-esp_err_t lamp_pwm_init(const int gpios[], unsigned count, uint32_t freq_hz);
+/**
+ * Configure the LEDC timer and one channel per GPIO; all lamps start off.
+ * @param active_low  true when the lamp lights while the pin is LOW (output inverted by the
+ *                    LEDC hardware, so percentages keep their meaning: 100 % = brightest).
+ *                    Before this call the pins are floating/high, so an inverted lamp may
+ *                    flash on for a moment at boot.
+ */
+esp_err_t lamp_pwm_init(const int gpios[], unsigned count, uint32_t freq_hz, bool active_low);
 
 /**
  * Request a brightness. Repeated calls with the same value are cheap no-ops,

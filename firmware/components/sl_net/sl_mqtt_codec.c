@@ -22,6 +22,9 @@ const sl_config_t SL_CONFIG_DEFAULT = {
     .lux_day = 100,
     .fade_up_ms = 200,
     .fade_down_ms = 3000,
+    .base_pct = 20,
+    .stop_alert = 1,
+    .stop_time_s = 10, /* demo value; a few minutes on a real road */
     .night_start = "18:00",
     .night_end = "06:00",
 };
@@ -128,6 +131,9 @@ int sl_codec_encode_state(char *buf, size_t cap, const sl_state_t *state)
     }
     w_fmt(&w, "],\"fps\":%.1f", (double)state->fps);
     w_opt_str(&w, "sensor_error", state->sensor_error);
+    if (state->t_unix_ms > 0) {
+        w_fmt(&w, ",\"t\":%lld", (long long)state->t_unix_ms);
+    }
     w_fmt(&w, "}");
     return w_finish(&w);
 }
@@ -199,6 +205,8 @@ int sl_codec_encode_config(char *buf, size_t cap, const sl_config_t *cfg)
     w_fmt(&w, "{\"lux_night\":%u,\"lux_day\":%u,\"fade_up_ms\":%u,\"fade_down_ms\":%u",
           (unsigned)cfg->lux_night, (unsigned)cfg->lux_day,
           (unsigned)cfg->fade_up_ms, (unsigned)cfg->fade_down_ms);
+    w_fmt(&w, ",\"base_pct\":%u,\"stop_alert\":%s,\"stop_time_s\":%u", (unsigned)cfg->base_pct,
+          cfg->stop_alert != 0U ? "true" : "false", (unsigned)cfg->stop_time_s);
     w_fmt(&w, ",\"night_start\":");
     w_str(&w, cfg->night_start);
     w_fmt(&w, ",\"night_end\":");
@@ -225,6 +233,68 @@ int sl_codec_encode_alert(char *buf, size_t cap, const sl_alert_t *alert)
     }
     w_opt_str(&w, "status", alert->status);
     w_opt_str(&w, "msg", alert->msg);
+    if (alert->has_pos) {
+        w_fmt(&w, ",\"x\":%.3f,\"y\":%.3f,\"score\":%u,\"still_s\":%" PRIu32, (double)alert->x, (double)alert->y,
+              (unsigned)alert->score, alert->still_s);
+    }
+    if (alert->obj_count > 0U) {
+        const unsigned n = alert->obj_count < SL_ALERT_MAX_OBJS ? alert->obj_count : SL_ALERT_MAX_OBJS;
+        w_fmt(&w, ",\"objs\":[");
+        for (unsigned k = 0; k < n; k++) {
+            const sl_alert_obj_t *o = &alert->objs[k];
+            w_fmt(&w, "%s{\"x\":%.3f,\"y\":%.3f,\"class\":\"%s\",\"score\":%u", k > 0U ? "," : "", (double)o->x,
+                  (double)o->y, o->vehicle ? "xe" : "nguoi", (unsigned)o->score);
+            if (o->zone != 0U) {
+                w_fmt(&w, ",\"zone\":%u", (unsigned)o->zone);
+            }
+            if (o->since != 0) {
+                w_fmt(&w, ",\"since\":%lld", (long long)o->since);
+            }
+            if (o->has_still) {
+                w_fmt(&w, ",\"still_s\":%" PRIu32, o->still_s);
+            }
+            w_fmt(&w, "}");
+        }
+        w_fmt(&w, "]");
+    }
+    w_fmt(&w, "}");
+    return w_finish(&w);
+}
+
+/* ,"key":[a,b] or ,"key":null */
+static void w_line(json_writer_t *w, const char *key, bool present, float a, float b)
+{
+    if (present) {
+        w_fmt(w, ",\"%s\":[%.5f,%.3f]", key, (double)a, (double)b);
+    } else {
+        w_fmt(w, ",\"%s\":null", key);
+    }
+}
+
+int sl_codec_encode_calib(char *buf, size_t cap, const sl_calib_t *calib)
+{
+    if (calib == NULL) {
+        return -1;
+    }
+    json_writer_t w;
+    w_init(&w, buf, cap);
+    w_fmt(&w, "{\"state\":\"%s\",\"w\":%u,\"h\":%u", calib->found ? "found" : "not_found",
+          (unsigned)calib->width, (unsigned)calib->height);
+    if (calib->found) {
+        w_line(&w, "top", true, calib->top_a, calib->top_b);
+        w_line(&w, "bottom", true, calib->bottom_a, calib->bottom_b);
+        w_line(&w, "left", calib->has_left, calib->left_a, calib->left_b);
+        w_line(&w, "kerb_top", calib->has_kerb_top, calib->kerb_top_a, calib->kerb_top_b);
+        w_line(&w, "kerb_bottom", calib->has_kerb_bottom, calib->kerb_bottom_a, calib->kerb_bottom_b);
+        w_fmt(&w, ",\"x_min\":%d,\"x_max\":%d,\"bounds\":[", (int)calib->x_min, (int)calib->x_max);
+        for (unsigned k = 0; k < SL_ZONE_COUNT - 1U; k++) {
+            w_fmt(&w, k > 0U ? ",%.2f" : "%.2f", (double)calib->bounds[k]);
+        }
+        w_fmt(&w, "]");
+    }
+    if (calib->t_sec != 0) {
+        w_fmt(&w, ",\"t\":%lld", (long long)calib->t_sec);
+    }
     w_fmt(&w, "}");
     return w_finish(&w);
 }
@@ -269,7 +339,7 @@ static double clampd(double x, double lo, double hi)
 
 /* Read an optional numeric field, clamp it and flag it in the patch */
 static void read_num(const cJSON *obj, const char *key, double lo, double hi,
-                     uint16_t *dst, uint8_t flag, uint8_t *fields)
+                     uint16_t *dst, uint16_t flag, uint16_t *fields)
 {
     const cJSON *item = cJSON_GetObjectItemCaseSensitive(obj, key);
     if (cJSON_IsNumber(item) && isfinite(item->valuedouble)) {
@@ -279,11 +349,20 @@ static void read_num(const cJSON *obj, const char *key, double lo, double hi,
 }
 
 static void read_hhmm(const cJSON *obj, const char *key, char dst[SL_HHMM_LEN],
-                      uint8_t flag, uint8_t *fields)
+                      uint16_t flag, uint16_t *fields)
 {
     const cJSON *item = cJSON_GetObjectItemCaseSensitive(obj, key);
     if (cJSON_IsString(item) && is_hhmm(item->valuestring)) {
         memcpy(dst, item->valuestring, SL_HHMM_LEN);
+        *fields |= flag;
+    }
+}
+
+static void read_switch(const cJSON *obj, const char *key, uint16_t *dst, uint16_t flag, uint16_t *fields)
+{
+    const cJSON *item = cJSON_GetObjectItemCaseSensitive(obj, key);
+    if (cJSON_IsBool(item)) {
+        *dst = cJSON_IsTrue(item) ? 1U : 0U;
         *fields |= flag;
     }
 }
@@ -303,6 +382,22 @@ static bool decode_lamp(const cJSON *root, sl_cmd_t *out)
     out->u.lamp.lamp = (uint8_t)id;
     out->u.lamp.duty = (uint8_t)lround(duty->valuedouble);
     return true;
+}
+
+/* Unix ms between 2020 and 2100 (anything else: not a real time) */
+static bool read_unix_ms(const cJSON *root, const char *key, int64_t *out)
+{
+    const cJSON *v = cJSON_GetObjectItemCaseSensitive(root, key);
+    if (!cJSON_IsNumber(v) || v->valuedouble < 1.5e12 || v->valuedouble >= 4.1e12) {
+        return false;
+    }
+    *out = (int64_t)v->valuedouble;
+    return true;
+}
+
+static bool decode_latency(const cJSON *root, sl_cmd_t *out)
+{
+    return read_unix_ms(root, "t", &out->u.latency.board_ms) && read_unix_ms(root, "rx", &out->u.latency.web_ms);
 }
 
 static bool decode_ack(const cJSON *root, sl_cmd_t *out)
@@ -329,6 +424,10 @@ static bool decode_config(const cJSON *root, sl_cmd_t *out)
     read_num(root, "lux_day", SL_LUX_MIN, SL_LUX_MAX, &p->value.lux_day, SL_CFG_LUX_DAY, &p->fields);
     read_num(root, "fade_up_ms", 0, SL_FADE_UP_MAX_MS, &p->value.fade_up_ms, SL_CFG_FADE_UP, &p->fields);
     read_num(root, "fade_down_ms", 0, SL_FADE_DOWN_MAX_MS, &p->value.fade_down_ms, SL_CFG_FADE_DOWN, &p->fields);
+    read_num(root, "base_pct", SL_BASE_MIN_PCT, SL_BASE_MAX_PCT, &p->value.base_pct, SL_CFG_BASE, &p->fields);
+    read_switch(root, "stop_alert", &p->value.stop_alert, SL_CFG_STOP_ALERT, &p->fields);
+    read_num(root, "stop_time_s", SL_STOP_TIME_MIN_S, SL_STOP_TIME_MAX_S, &p->value.stop_time_s, SL_CFG_STOP_TIME,
+             &p->fields);
     read_hhmm(root, "night_start", p->value.night_start, SL_CFG_NIGHT_START, &p->fields);
     read_hhmm(root, "night_end", p->value.night_end, SL_CFG_NIGHT_END, &p->fields);
     return p->fields != 0U;
@@ -344,10 +443,12 @@ static bool decode_json_cmd(sl_cmd_type_t type, const char *data, size_t len, sl
     bool ok = false;
     if (cJSON_IsObject(root)) {
         out->type = type;
+        (void)read_unix_ms(root, "t", &out->sent_unix_ms); /* optional send time; 0 when missing or bad */
         switch (type) {
         case SL_CMD_LAMP:      ok = decode_lamp(root, out); break;
         case SL_CMD_ALERT_ACK: ok = decode_ack(root, out); break;
         case SL_CMD_CONFIG:    ok = decode_config(root, out); break;
+        case SL_CMD_LATENCY:   ok = decode_latency(root, out); break;
         default:               ok = false; break;
         }
     }
@@ -386,8 +487,15 @@ bool sl_codec_decode_cmd(const char *name, size_t name_len,
     if (name_is(name, name_len, "alert_ack")) {
         return decode_json_cmd(SL_CMD_ALERT_ACK, data, data_len, out);
     }
+    if (name_is(name, name_len, "latency")) {
+        return decode_json_cmd(SL_CMD_LATENCY, data, data_len, out);
+    }
     if (name_is(name, name_len, "config")) {
         return decode_json_cmd(SL_CMD_CONFIG, data, data_len, out);
+    }
+    if (name_is(name, name_len, "recalibrate")) {
+        out->type = SL_CMD_RECALIBRATE; /* the topic is the command: any payload */
+        return true;
     }
     return false;
 }
@@ -404,7 +512,7 @@ void sl_codec_apply_config(const sl_config_t *cur, const sl_config_patch_t *patc
         *out = SL_CONFIG_DEFAULT;
         return;
     }
-    const uint8_t f = patch->fields;
+    const uint16_t f = patch->fields;
     const sl_config_t *v = &patch->value;
     sl_config_t c = *cur;
 
@@ -412,6 +520,9 @@ void sl_codec_apply_config(const sl_config_t *cur, const sl_config_patch_t *patc
     if ((f & SL_CFG_LUX_DAY) != 0U)     { c.lux_day = v->lux_day; }
     if ((f & SL_CFG_FADE_UP) != 0U)     { c.fade_up_ms = v->fade_up_ms; }
     if ((f & SL_CFG_FADE_DOWN) != 0U)   { c.fade_down_ms = v->fade_down_ms; }
+    if ((f & SL_CFG_BASE) != 0U)        { c.base_pct = v->base_pct; }
+    if ((f & SL_CFG_STOP_ALERT) != 0U)  { c.stop_alert = v->stop_alert; }
+    if ((f & SL_CFG_STOP_TIME) != 0U)   { c.stop_time_s = v->stop_time_s; }
     if ((f & SL_CFG_NIGHT_START) != 0U) { memcpy(c.night_start, v->night_start, SL_HHMM_LEN); }
     if ((f & SL_CFG_NIGHT_END) != 0U)   { memcpy(c.night_end, v->night_end, SL_HHMM_LEN); }
 

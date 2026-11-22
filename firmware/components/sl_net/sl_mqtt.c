@@ -12,6 +12,7 @@
 #include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/time.h>
 
 #include "esp_crt_bundle.h"
 #include "esp_heap_caps.h"
@@ -92,6 +93,14 @@ static esp_err_t publish_tx(const char *sub_topic, int len)
     return publish_raw(sub_topic, s_tx_buf, (size_t)len, true);
 }
 
+/* Wall clock in Unix ms when the clock looks set by SNTP (after 2020), else 0 */
+static int64_t rx_unix_ms(void)
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return tv.tv_sec > 1577836800 ? (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000 : 0;
+}
+
 static void post_event(const sl_mqtt_event_t *ev)
 {
     if (xQueueSend(s_queue, ev, 0) != pdTRUE) {
@@ -119,6 +128,9 @@ static void handle_data(const esp_mqtt_event_handle_t ev)
                  ev->data_len, ev->data);
         return;
     }
+    /* stamped here, in the esp-mqtt task the moment the message arrives: the app task that drains the
+     * queue only wakes every 100 ms, which would add 0-100 ms to the latency test (plans/eval.md 6.4) */
+    out.cmd.rx_unix_ms = rx_unix_ms();
     post_event(&out);
 }
 
@@ -300,7 +312,8 @@ esp_err_t sl_mqtt_clear_alert(void)
     return publish_raw("alert/image", "", 0, true);
 }
 
-esp_err_t sl_mqtt_publish_image(const uint8_t *jpeg, size_t len)
+/* Base64 a JPEG into the PSRAM image buffer and publish it retained on sub_topic */
+static esp_err_t publish_jpeg(const char *sub_topic, const uint8_t *jpeg, size_t len)
 {
     if (jpeg == NULL || len == 0U) {
         return ESP_ERR_INVALID_ARG;
@@ -320,7 +333,33 @@ esp_err_t sl_mqtt_publish_image(const uint8_t *jpeg, size_t len)
     size_t b64_len = 0;
     const int rc = mbedtls_base64_encode((unsigned char *)s_img_buf, IMAGE_B64_CAP, &b64_len,
                                          jpeg, len);
-    err = (rc == 0) ? publish_raw("alert/image", s_img_buf, b64_len, true) : ESP_FAIL;
+    err = (rc == 0) ? publish_raw(sub_topic, s_img_buf, b64_len, true) : ESP_FAIL;
     xSemaphoreGive(s_img_lock);
+    return err;
+}
+
+esp_err_t sl_mqtt_publish_image(const uint8_t *jpeg, size_t len)
+{
+    return publish_jpeg("alert/image", jpeg, len);
+}
+
+esp_err_t sl_mqtt_publish_calib(const sl_calib_t *calib, const uint8_t *jpeg, size_t len)
+{
+    if (calib == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    /* Image first: QoS 1 on one connection keeps the order, so the page has the picture when the
+     * numbers that are drawn over it arrive */
+    if (jpeg != NULL && len > 0U) {
+        const esp_err_t img_err = publish_jpeg("calib/image", jpeg, len);
+        if (img_err != ESP_OK) {
+            return img_err;
+        }
+    }
+    esp_err_t err = lock_take(s_tx_lock, LOCK_TIMEOUT_MS);
+    if (err == ESP_OK) {
+        err = publish_tx("calib", sl_codec_encode_calib(s_tx_buf, sizeof(s_tx_buf), calib));
+        xSemaphoreGive(s_tx_lock);
+    }
     return err;
 }
