@@ -63,12 +63,12 @@
 <body>
 <main>
   <h1>Lưu đồ thuật toán và sơ đồ hệ thống</h1>
-  <p class="lead">Smart street lighting, Mức 1. Vẽ theo <b>thiết kế</b> trong plans/00–03 và reference/ (ma_hoa, ina219),
-    đối chiếu với code hiện có trong repo (firmware/, ai_stream/, thu_dataset/, dashboard/). Mỗi sơ đồ tải được
-    dạng SVG / PNG để chèn vào báo cáo.</p>
+  <p class="lead">Smart street lighting, Mức 1. Vẽ theo <b>code hiện có</b> trong repo (firmware/streetlight-node,
+    firmware/components, ai_stream/, thu_dataset/, dashboard/), đối chiếu lần cuối ngày 23/11/2026. Phần thiết kế
+    chưa code được đánh dấu riêng. Mỗi sơ đồ tải được dạng SVG / PNG để chèn vào báo cáo.</p>
   <div class="legend">
     <span><i class="sw done"></i>Đã có code</span>
-    <span><i class="sw part"></i>Có một phần / mới có trong app thử ai_stream</span>
+    <span><i class="sw part"></i>Có một phần</span>
     <span><i class="sw todo"></i>Thiết kế, chưa code</span>
     <span>Khối không tô màu: phần chung, không phân biệt trạng thái</span>
   </div>
@@ -78,6 +78,11 @@
   <section>
     <p>Các phần dưới đây không làm trong Mức 1 vì quá phức tạp so với thời gian đồ án, hoặc cần thêm phần cứng.</p>
     <ul>
+      <li><b>Nhận biết hướng đi của xe</b> (ghép tâm qua các khung, zone đổi K → K ± 1) để xe chỉ sáng zone K và
+        1 zone phía trước, tắt sớm phía sau. Hiện xe và người cùng sáng K−1..K+1.</li>
+      <li><b>Cách chia zone A và chọn trên web</b>: bật từng đèn để tìm vùng sáng của mỗi đèn; không được thì người dùng
+        bấm vị trí 4 đèn trên dashboard. Hiện chỉ có cách D (4 đoạn bằng nhau ngoài thực tế). Thêm phương án khi chỉ
+        thấy 1 mép đường: suy mép kia từ tỷ lệ lề (lề có đèn 5/13, lề không đèn 6/13 bề rộng đường).</li>
       <li><b>Mã hoá nội dung tin nhắn MQTT bằng AES-256-GCM</b> (chi tiết: reference/ma_hoa.md). Hiện TLS chỉ mã hoá
         đoạn đường board ↔ broker và dashboard ↔ broker; broker vẫn đọc được nội dung và lưu tin retained dạng chữ thường.
         AES-GCM mã hoá và xác thực trong một bước, nên người có tài khoản broker không đọc được số liệu và không giả được lệnh
@@ -86,14 +91,15 @@
       <li><b>Mã hoá NVS</b> để người cầm board không đọc được mật khẩu WiFi / MQTT trong flash (ghi eFuse, không đảo ngược được,
         nên thử trên board dự phòng trước).</li>
       <li><b>Board thứ 2 nối bằng ESP-NOW</b> để phủ đoạn đường dài hơn.</li>
-      <li><b>Model phát hiện bóng hỏng</b> (autoencoder trên số đo INA219) thay cho ngưỡng cố định.</li>
+      <li><b>Model phát hiện bóng hỏng</b> (autoencoder trên số đo INA219) thay cho ngưỡng cố định hiện tại (lamp_fault.c).</li>
       <li><b>Cảm biến vật cản FC-51 dự phòng</b>, kiểm tra chéo với camera; <b>camera xác nhận đèn thật sự sáng</b>.</li>
       <li><b>Module đồng hồ DS3231</b> giữ giờ khi mất cả điện lẫn Internet; <b>Telegram bot</b> nhận cảnh báo.</li>
     </ul>
   </section>
   <footer>Sơ đồ vẽ bằng Mermaid, cần Internet khi mở trang để tải thư viện. Sửa sơ đồ: sửa mảng
-    <code>GROUPS</code> trong file này. Nguồn: plans/00-project-setup-plan.md, plans/01-ai-models-and-dataset.md,
-    plans/03-so-do-noi-day.md, reference/ma_hoa.md, dashboard/src/lib/protocol.ts.</footer>
+    <code>GROUPS</code> trong file này. Nguồn: firmware/streetlight-node/README.md, main.c, vision.c, zone_rule.c,
+    lighting.c, lux_check.c, stop_detect.c, lamp_fault.c, ina_zero.c, firmware/components/road_zones,
+    dashboard/src/lib/protocol.ts, plans/03-so-do-noi-day.md, plans/eval.md, reference/ma_hoa.md.</footer>
 </main>
 
 <script type="module">
@@ -114,42 +120,44 @@ const STATUS = {
 const GROUPS = [
 { name: "A. Tổng quan hệ thống", items: [
 {
-  id: "kien-truc", status: "part",
+  id: "kien-truc", status: "done",
   title: "Kiến trúc tổng thể",
-  desc: "Một ESP32-S3 làm mọi việc ngay trên board: nhìn đường bằng camera + FOMO, đọc ánh sáng và điện năng, ra quyết định bằng luật, điều khiển 4 đèn. Mất Internet thì đèn, AI và đo điện vẫn chạy; chỉ dashboard không xem được. Ảnh chỉ gửi khi có cảnh báo vật dừng.",
+  desc: "Một ESP32-S3 làm mọi việc ngay trên board: tìm đường và chia 4 zone, nhìn đường bằng camera + FOMO, đọc ánh sáng và điện năng, ra quyết định bằng luật, điều khiển 4 đèn. Mất Internet thì đèn, AI và đo điện vẫn chạy; chỉ dashboard không xem được (chưa có giờ SNTP thì ngày/đêm theo BH1750). Ảnh JPEG chỉ gửi khi tìm đường và khi có cảnh báo xe dừng lâu. Theo dõi vật mới phát hiện xe dừng, chưa nhận biết hướng đi.",
   code: String.raw`flowchart LR
-  subgraph PWR["Nguồn (chung GND)"]
-    BAT["Pin Li-ion + TP4056<br/>5 V cho ESP32"]
+  subgraph PWR["Nguồn (2 nguồn riêng, chung GND)"]
+    BAT["Sạc dự phòng 5 V ≥ 2 A qua USB-C<br/>(schematic: pin Li-ion + TP4056)"]
     ADP["Adapter 5 V ≥ 1 A<br/>qua công tắc → V_in đèn"]
   end
   subgraph NODE["ESP32-S3 CAM: streetlight-node"]
     direction TB
-    CAM["OV2640<br/>ảnh xám 320×240"] --> VIS["Cắt vùng đường → FOMO<br/>người / xe"]
-    VIS --> TRK["Theo dõi tâm vật:<br/>zone, hướng, đứng yên"]
-    TRK --> RULE["Luật chiếu sáng<br/>(state machine)"]
+    CAM["OV2640<br/>ảnh xám 320×240"] --> VIS["FOMO int8 128×128<br/>người / xe, ~3,8 khung/s"]
+    CAM --> CAL["Tìm đường + lề + 4 zone<br/>(road_zones)"]
+    CAL --> RULE
+    VIS --> RULE["Luật đèn theo zone<br/>+ ngày/đêm + chế độ"]
+    VIS --> TRK["Theo dõi tâm xe:<br/>xe dừng lâu (chưa có hướng)"]
     SEN["BH1750 + 4 INA219<br/>(I2C)"] --> RULE
-    SEN --> EN["Điện năng từng bóng<br/>lưu NVS"]
-    RULE --> PWM["PWM 4 kênh, sáng/tối dần"]
+    SEN --> EN["Điện năng, P100, đèn hỏng<br/>lưu NVS"]
+    RULE --> PWM["PWM 4 kênh 2 kHz<br/>sáng nhanh, tối dần"]
   end
   PWM --> ULN["ULN2003"] --> LED["4 đèn LED"]
   ADP --> LED
   BAT --> NODE
-  NODE ==>|"MQTT/TLS 8883"| BRK[("Broker MQTT cloud<br/>EMQX Cloud / HiveMQ")]
+  NODE ==>|"MQTT/TLS 8883: số liệu, cảnh báo, ảnh"| BRK[("HiveMQ Cloud")]
   BRK <-->|"WebSocket/TLS"| DASH["Dashboard web<br/>GitHub Pages"]
   USER(["Người quản lý<br/>điện thoại / laptop"]) --> DASH
-  class SEN,EN,PWM,BRK,DASH done
-  class CAM,VIS,RULE part
-  class TRK todo`
+  class CAM,VIS,CAL,RULE,SEN,EN,PWM,BRK,DASH done
+  class TRK part`
 },
 {
   id: "phan-cung", status: "done",
-  title: "Phần cứng và nối dây (theo schematic)",
-  desc: "Ba nhóm điện áp: logic 3,3 V (ESP32, cảm biến), 5 V cho ESP32 (TP4056), 5 V cho đèn (adapter). Bắt buộc nối chung GND. Dòng mỗi bóng: V_in → INA219 → 47 Ω → LED → ULN2003 → GND; ESP32 chỉ gửi PWM vào ULN2003. Thứ tự chân đèn trong app thử ai_stream đang khác (47, 21, 20, 19).",
+  title: "Phần cứng và nối dây",
+  desc: "Ba nhóm điện áp: logic 3,3 V (ESP32, cảm biến), 5 V cho ESP32, 5 V cho đèn (adapter). Bắt buộc nối chung GND. Dòng mỗi bóng: V_in → INA219 → 47 Ω → LED → ULN2003 → GND; ESP32 chỉ gửi PWM vào ULN2003. Thứ tự chân đèn theo vị trí trong ảnh camera (đèn 1 bên trái): GPIO 47, 21, 20, 19, mức tích cực thấp (100 % = chân xuống thấp). GPIO 20/19 là chân USB D+/D− nên nạp qua cổng UART. Thực tế ESP32 cấp từ sạc dự phòng qua USB-C; schematic vẽ pin + TP4056. streetlight-wifi và thu_dataset còn dùng thứ tự cũ 19, 20, 21, 47.",
   code: String.raw`flowchart LR
-  BAT["Pin Li-ion → TP4056 (U11)"] -->|"Out+ 5 V"| ESP["ESP32-S3 CAM (U13)<br/>Freenove WROOM CAM"]
+  BAT["Sạc dự phòng USB-C<br/>(schematic: pin → TP4056 U11)"] -->|"5 V"| ESP["ESP32-S3 CAM (U13)<br/>Freenove WROOM CAM N8R8"]
   CAM["OV2640<br/>GPIO 4–13, 15–18"] --- ESP
+  BTN["Nút BOOT IO0<br/>nhấn đôi: đổi chế độ"] --- ESP
   ADP["Adapter 5 V"] --> SW["Công tắc (U3)"] --> VIN["V_in: thanh 5 V đèn"]
-  ESP -->|"3V3, SDA GPIO40, SCL GPIO39"| I2C["Bus I2C<br/>kéo lên 4,7 kΩ"]
+  ESP -->|"3V3, SDA GPIO40, SCL GPIO39"| I2C["Bus I2C 100 kHz<br/>kéo lên 4,7 kΩ"]
   I2C --- BH["BH1750 0x23"]
   I2C --- INA1["INA219 0x40"]
   I2C --- INA2["INA219 0x41"]
@@ -159,7 +167,7 @@ const GROUPS = [
   VIN --> INA2 --> L2["47 Ω + LED 2"]
   VIN --> INA3 --> L3["47 Ω + LED 3"]
   VIN --> INA4 --> L4["47 Ω + LED 4"]
-  ESP -->|"PWM GPIO 19, 20, 21, 47"| ULN["ULN2003 (U4)<br/>IN1–IN4"]
+  ESP -->|"PWM 2 kHz: đèn 1–4 = GPIO 47, 21, 20, 19"| ULN["ULN2003 (U4)<br/>IN1–IN4"]
   L1 --> ULN
   L2 --> ULN
   L3 --> ULN
@@ -167,166 +175,173 @@ const GROUPS = [
   ULN --> GND(["GND chung"])`
 },
 {
-  id: "phan-mem", status: "part",
-  title: "Khối phần mềm trên board",
-  desc: "Logic thuần (không gọi ESP-IDF) tách riêng để test trên PC; driver và dịch vụ nằm dưới. Camera, model và chia zone đã chạy trong app thử ai_stream, chưa ghép vào app chính.",
+  id: "phan-mem", status: "done",
+  title: "Khối phần mềm trên board (streetlight-node)",
+  desc: "Ba task FreeRTOS dùng chung các module. Logic thuần C (không gọi ESP-IDF) tách riêng để test trên PC (test/host); driver và dịch vụ nằm dưới. road_zones, bh1750, ina219, lamp_pwm, sl_net là component dùng chung trong firmware/components. Chế độ ai-stream là bản chép của app ai_stream.",
   code: String.raw`flowchart TB
-  subgraph APP["Ứng dụng: main loop"]
-    MAIN["Vòng lặp 200 ms<br/>+ xử lý lệnh"]
+  subgraph TASKS["3 task FreeRTOS"]
+    CT["control (ưu tiên 6)<br/>đúng 200 ms, main.c"]
+    VT["vision (ưu tiên 4)<br/>camera + FOMO + tìm đường, vision.c"]
+    NT["network (ưu tiên 3)<br/>WiFi, SNTP, MQTT, main.c"]
   end
-  subgraph LOGIC["Logic thuần (test được trên PC)"]
-    LIGHT["lighting<br/>ngày/đêm, theo giờ"]
-    ZONE["luật zone<br/>người / xe"]
-    TRACK["theo dõi vật<br/>hướng, đứng yên"]
-    ROAD["road_zones<br/>khung đường, 4 zone"]
-    ENA["energy_acc / stats<br/>điện năng, % tiết kiệm"]
-    ALERT["quản lý cảnh báo"]
+  subgraph LOGIC["Logic thuần C, test trên PC"]
+    LIGHT["lighting<br/>ngày/đêm có trễ, theo giờ"]
+    LUX["lux_check<br/>BH1750 bị che"]
+    ZONE["zone_rule<br/>luật zone người / xe"]
+    STOP["stop_detect<br/>theo dõi xe dừng"]
+    FAULT["lamp_fault<br/>đèn hỏng"]
+    ZERO["ina_zero<br/>bù offset INA219"]
+    ENA["energy_acc / energy_stats<br/>điện năng, % tiết kiệm"]
+    ROAD["road_zones<br/>đường, lề, 4 zone"]
+    CODEC["sl_mqtt_codec<br/>JSON ↔ struct"]
   end
   subgraph SVC["Driver và dịch vụ"]
-    SH["sensor_hub<br/>BH1750 + 4 INA219"]
+    SH["sensor_hub<br/>bh1750 + ina219"]
     LP["lamp_pwm<br/>LEDC + fade"]
     CC["camera_cap"]
     DET["detector<br/>FOMO Edge Impulse"]
     ST["node_store (NVS)"]
     TS["time_sync (SNTP)"]
-    NET["sl_wifi + sl_mqtt + codec"]
+    NET["sl_wifi + sl_mqtt + sl_secrets"]
   end
-  MAIN --> LIGHT
-  MAIN --> ZONE
-  MAIN --> ENA
-  MAIN --> ALERT
-  ZONE --> TRACK --> DET --> CC
+  subgraph MODE["Chọn chế độ khi khởi động"]
+    BM["boot_mode + mode_button<br/>nhấn đôi IO0"]
+    SM["stream_mode<br/>chế độ ai-stream"]
+  end
+  CT --> LIGHT
+  CT --> LUX
+  CT --> ZONE
+  CT --> STOP
+  CT --> FAULT
+  CT --> ZERO
+  CT --> ENA
+  CT --> SH
+  CT --> LP
+  CT --> ST
+  VT --> CC
+  VT --> DET
+  VT --> ROAD
   ZONE --> ROAD
-  MAIN --> SH
-  MAIN --> LP
-  MAIN --> ST
-  MAIN --> TS
-  MAIN --> NET
-  class MAIN,LIGHT,ENA,SH,LP,ST,TS,NET done
-  class ZONE,ROAD,CC,DET part
-  class TRACK,ALERT todo`
+  NT --> NET
+  NT --> TS
+  NET --> CODEC
+  BM --> SM
+  class CT,VT,NT,LIGHT,LUX,ZONE,STOP,FAULT,ZERO,ENA,ROAD,CODEC,SH,LP,CC,DET,ST,TS,NET,BM,SM done`
 },
 {
   id: "cac-app", status: "done",
   title: "Các app trong repo theo giai đoạn",
-  desc: "Mỗi giai đoạn có một sản phẩm chạy được. Các app dùng chung phần cứng nên mỗi lần chỉ nạp một app.",
+  desc: "Mỗi giai đoạn có một sản phẩm chạy được. Các app dùng chung phần cứng nên mỗi lần chỉ nạp một app. streetlight-node là app chính và đã ghép camera + AI; chế độ ai-stream bên trong nó là bản chép của ai_stream (sửa bên nào thì chép sang bên kia).",
   code: String.raw`flowchart LR
-  G1["GĐ 1: Camera + FOMO"] --> AS["ai_stream<br/>stream + hộp vật + chia zone"]
+  G1["GĐ 1: Camera + FOMO"] --> AS["ai_stream<br/>stream + hộp vật + tìm đường"]
   G23["GĐ 2–3: đèn, BH1750, INA219,<br/>luật ngày/đêm, điện năng"] --> SW["streetlight-wifi<br/>xem, chỉnh qua web trên board"]
   G4["GĐ 4: thu dataset, train"] --> TD["thu_dataset + tools/"]
   G56["GĐ 5–6: MQTT, dashboard,<br/>cảnh báo kèm ảnh"] --> NODE["firmware/streetlight-node<br/>+ dashboard/"]
-  TD --> ML["ml/vision<br/>notebook train FOMO"]
+  TD --> ML["ml/vision<br/>train FOMO"]
   ML --> AS
-  AS -.->|"ghép camera + AI"| NODE
-  class AS,SW,TD,ML done
-  class NODE part`
+  AS -->|"chép vào chế độ ai-stream"| NODE
+  SW -->|"luật đèn, điện năng, MQTT"| NODE
+  class AS,SW,TD,ML,NODE done`
 },
 ]},
 
 { name: "B. Thuật toán trên board", items: [
 {
-  id: "khoi-dong", status: "part",
+  id: "khoi-dong", status: "done",
   title: "Khởi động",
-  desc: "Đèn và điện năng phải chạy ngay cả khi không có mạng, nên phần mạng (WiFi, SNTP, MQTT) nằm trong task riêng chạy nền và không chặn luật đèn. Camera hỏng lúc khởi động thì chuyển ngay sang chế độ theo giờ.",
+  desc: "Camera và model được khởi tạo trước WiFi để lấy PSRAM trước. Lỗi ở bước nào cũng chỉ ghi log, board vẫn chạy phần còn lại: không có camera thì ban đêm sáng 100 % theo giờ, không có secrets thì chạy offline. Phần mạng nằm trong task network chạy nền, không chặn luật đèn. Cờ chế độ ai-stream nằm trong RTC RAM nên chỉ sống qua lệnh khởi động lại mềm; cúp điện, RESET hay watchdog đều về chế độ bình thường.",
   code: String.raw`flowchart TD
-  S(["Cấp nguồn"]) --> NVS["Khởi tạo NVS"]
-  NVS --> LOAD["Nạp cấu hình, điện năng, P100<br/>(lỗi → giá trị mặc định)"]
-  LOAD --> PWMI["PWM 4 kênh, tắt hết đèn"]
-  PWMI --> I2CI["I2C: tìm BH1750 + 4 INA219"]
-  I2CI --> CAMQ{"Camera + model FOMO OK?"}
-  CAMQ -->|"Không"| CERR["Đánh dấu lỗi camera<br/>→ chế độ theo giờ"]
-  CAMQ -->|"Có"| CAL["Xác định vùng đường + 4 zone<br/>(lưu đồ 15)"]
-  CERR --> TASKS["Tạo 3 task: điều khiển,<br/>nhận diện, mạng (lưu đồ 6)"]
-  CAL --> TASKS
+  S(["Cấp nguồn / reset"]) --> BTN["Bật task nút IO0<br/>(nhấn đôi → khởi động lại sang chế độ kia)"]
+  BTN --> BM{"Cờ chế độ trong RTC RAM?"}
+  BM -->|"ai-stream"| AIS["Chế độ ai-stream: WiFi AP StreetLight-AI<br/>+ trang web xem trực tiếp (lưu đồ 23)"]
+  BM -->|"bình thường (mặc định)"| PWMI["PWM 4 kênh, tắt hết đèn"]
+  PWMI --> I2CI["I2C: BH1750 + 4 INA219<br/>(thiếu thì thử lại mỗi 5 s)"]
+  I2CI --> NVSQ{"Mở được NVS?"}
+  NVSQ -->|"Có"| LOAD["Nạp cấu hình, điện năng, P100<br/>(chưa có → mặc định)"]
+  NVSQ -->|"Không"| NOP["Không lưu, không có mạng"]
+  LOAD --> CAMQ
+  NOP --> CAMQ{"Camera + model + PSRAM OK?"}
+  CAMQ -->|"Có"| VT["Tạo task vision"]
+  CAMQ -->|"Không"| CERR["camera_ok = false<br/>→ ban đêm chế độ theo giờ"]
+  VT --> SEC
+  CERR --> SEC{"Có WiFi/MQTT trong NVS?"}
+  SEC -->|"Có"| WST["Bắt đầu kết nối WiFi (không chờ)"]
+  SEC -->|"Không"| OFF["Offline: không SNTP, không MQTT"]
+  WST --> TASKS["Tạo task network + control<br/>(lưu đồ 6)"]
+  OFF --> TASKS
   TASKS --> RUN(["Hệ thống chạy"])
-  TASKS -.->|"task mạng"| NET["WiFi → SNTP (UTC+7) → MQTT/TLS:<br/>LWT, gửi lại config, history, alert"]
-  class NVS,LOAD,PWMI,I2CI,NET done
-  class CAMQ,CAL part
-  class CERR,TASKS todo`
+  TASKS -.->|"task vision thấy control đã chạy"| CALB["Tìm đường lần đầu, cả ban ngày:<br/>4 đèn 100 % khoảng 2 s (lưu đồ 18)"]
+  TASKS -.->|"task network"| NET["Có IP → SNTP (UTC+7) + MQTT/TLS<br/>kết nối xong: gửi config + history"]
+  class BTN,BM,AIS,PWMI,I2CI,NVSQ,LOAD,NOP,CAMQ,VT,CERR,SEC,WST,OFF,TASKS,CALB,NET done`
 },
 {
-  id: "phan-task", status: "plan",
+  id: "phan-task", status: "done",
   title: "Phân chia task và chu kỳ 200 ms",
-  desc: "Một vòng lặp chung không giữ được 200 ms: riêng FOMO đã mất 200–330 ms mỗi lần (mục tiêu 3–5 lần/s, chưa đo trên board), và gửi MQTT qua TLS là thao tác chờ. Vì vậy tách 3 task. Task điều khiển ưu tiên cao nhất, chạy đúng mốc 200 ms bằng vTaskDelayUntil và không bao giờ chờ task khác: nó chỉ đọc kết quả nhận diện mới nhất trong hộp thư (hàng đợi 1 phần tử, ghi đè). Hiện app chính vẫn làm mọi việc trong một vòng, còn ai_stream chạy camera → FOMO → đèn nối tiếp trong một task.",
+  desc: "Một vòng lặp chung không giữ được 200 ms: riêng FOMO đã mất ~250 ms mỗi khung, và gửi MQTT qua TLS có thể chờ cả giây. Vì vậy tách 3 task (không ghim lõi, FreeRTOS tự chia 2 lõi). Task control ưu tiên cao nhất, chạy đúng mốc 200 ms bằng xTaskDelayUntil và không bao giờ chờ task khác: nó chỉ đọc kết quả nhận diện mới nhất trong hộp thư (khoá mutex, ghi đè) và đặt dữ liệu cần gửi vào hộp gửi. Đo thật (plans/eval.md 3.2): chu kỳ control dài nhất 126,5 ms qua 9,7 giờ; FOMO trung bình 3,8 khung/s.",
   code: String.raw`flowchart LR
-  subgraph CORE1["Lõi 1"]
-    CT["Task điều khiển<br/>ưu tiên CAO, đúng 200 ms<br/>(lưu đồ 7)"]
-    VT["Task nhận diện<br/>ưu tiên trung bình, chạy liên tục<br/>tốc độ = FOMO (lưu đồ 10)"]
-  end
-  subgraph CORE0["Lõi 0 (cùng ngăn xếp WiFi)"]
-    NT["Task mạng<br/>ưu tiên thấp<br/>WiFi, SNTP, MQTT/TLS"]
-  end
-  CAM["Camera OV2640"] --> VT
-  VT -->|"kết quả mới nhất + thời điểm"| MB[("Hộp thư nhận diện<br/>queue 1 phần tử, ghi đè")]
-  MB -->|"đọc, không chờ"| CT
+  CAM["Camera OV2640"] --> VT["Task vision<br/>ưu tiên 4, chạy liên tục<br/>~263 ms/khung (lưu đồ 12)"]
+  VT -->|"kết quả mới nhất + thời điểm"| MB[("Hộp thư nhận diện<br/>1 bản, mutex, ghi đè")]
+  MB -->|"đọc, không chờ"| CT["Task control<br/>ưu tiên 6, đúng 200 ms<br/>(lưu đồ 7)"]
+  CT -.->|"cờ ban đêm, cờ đang tìm đường"| VT
   SEN["BH1750 + 4 INA219"] --> CT
   CT --> PWM["PWM 4 đèn"]
-  CT -->|"trạng thái mỗi 5 s, không chờ"| TQ[("Hàng đợi gửi")]
-  TQ --> NT
-  NT -->|"lệnh từ dashboard"| CQ[("Hàng đợi lệnh")]
+  CT -->|"state + energy mỗi 5 s, alert, config, history"| TX[("Hộp gửi<br/>mutex + cờ sẵn sàng")]
+  VT -->|"JPEG tìm đường / cảnh báo"| JB[("Bộ đệm ảnh PSRAM")]
+  TX --> NT["Task network<br/>ưu tiên 3, vòng 100 ms<br/>WiFi, SNTP, MQTT/TLS"]
+  JB --> NT
+  NT -->|"lệnh từ dashboard"| CQ[("Hàng đợi lệnh<br/>8 phần tử")]
   CQ -->|"đọc, không chờ"| CT
   NT <--> BRK[("Broker MQTT")]
-  class SEN,PWM,BRK done
-  class CT,VT part
-  class NT,MB,TQ,CQ todo`
+  class VT,MB,CT,SEN,PWM,TX,JB,NT,CQ,BRK done`
 },
 {
-  id: "dieu-khien", status: "part",
-  title: "Task điều khiển (chu kỳ 200 ms)",
-  desc: "Mọi bước trong task này đều ngắn và không chờ: đọc cảm biến, lấy lệnh và kết quả nhận diện có sẵn, quyết định, đặt PWM, cộng điện năng. Kết quả nhận diện cũ hơn 2 s nghĩa là camera/FOMO không chạy nữa → chế độ theo giờ. Mỗi chu kỳ tự đo thời gian để phát hiện khi bị trễ.",
+  id: "dieu-khien", status: "done",
+  title: "Task control (chu kỳ 200 ms)",
+  desc: "Mọi bước trong task này đều ngắn và không chờ: đọc cảm biến, lấy kết quả nhận diện có sẵn, quyết định, đặt PWM, cộng điện năng. Luật zone chỉ được cập nhật khi có khung nhận diện mới (không phải mỗi chu kỳ); ban ngày luật zone và bộ theo dõi xe được xoá trắng. Lệnh từ dashboard lấy ra sau khi đặt PWM nên có hiệu lực ở chu kỳ sau (≤ 200 ms), và đẩy trạng thái mới lên ngay.",
   code: String.raw`flowchart TD
-  L(["Mốc 200 ms (vTaskDelayUntil)"]) --> SEN["Đọc BH1750 + 4 INA219"]
-  SEN --> CLK["Đọc giờ; sang giờ / ngày mới<br/>thì chốt thống kê"]
-  CLK --> CMDQ["Lấy lệnh dashboard trong hàng đợi<br/>(không chờ)"]
-  CMDQ --> MODE["Chọn chế độ hoạt động<br/>(lưu đồ 8)"]
-  MODE --> NQ{"Ban đêm, chế độ tự động?"}
-  NQ -->|"Có"| MB["Đọc kết quả nhận diện mới nhất<br/>trong hộp thư (không chờ)"]
-  MB --> AGE{"Kết quả mới hơn 2 s?"}
-  AGE -->|"Có"| ZR["Luật zone người / xe<br/>(lưu đồ 11)"]
-  AGE -->|"Không"| VERR["Lỗi camera / FOMO<br/>→ chế độ theo giờ"]
-  NQ -->|"Không"| OUT
-  ZR --> OUT["Đặt độ sáng 4 đèn<br/>(chuyển mức: lưu đồ 12)"]
-  VERR --> OUT
-  OUT --> EN["Tích phân điện năng<br/>(lưu đồ 14)"]
-  EN --> TEL{"Đủ 5 s?"}
-  TEL -->|"Có"| SNAP["Đưa trạng thái sang task mạng<br/>(không chờ)"]
+  L(["Mốc 200 ms (xTaskDelayUntil)"]) --> SEN["Đọc BH1750 + 4 INA219"]
+  SEN --> ZERO["Bù offset INA219<br/>(lưu đồ 16)"]
+  ZERO --> CLK["Đọc giờ SNTP: sang giờ / ngày mới<br/>→ chốt lịch sử, lưu NVS"]
+  CLK --> VIS["Đọc hộp thư nhận diện<br/>+ cờ đang tìm đường (không chờ)"]
+  VIS --> DN["Quyết định ngày / đêm<br/>(lưu đồ 8)"]
+  DN --> CF["Xét lỗi camera: mất khung,<br/>hoặc đêm mà 3 s không có kết quả mới"]
+  CF --> MODE["Chọn chế độ, tính độ sáng 4 đèn<br/>(lưu đồ 11)"]
+  MODE --> PWM["Đặt PWM: sáng nhanh / tối dần<br/>(lưu đồ 14)"]
+  PWM --> NEWQ{"Ban đêm và có<br/>khung nhận diện mới?"}
+  NEWQ -->|"Có"| ZR["Cập nhật luật zone (lưu đồ 13)<br/>+ theo dõi xe dừng (lưu đồ 15)"]
+  NEWQ -->|"Không"| EN
+  ZR --> EN["Tích phân điện năng, tự đo P100<br/>(lưu đồ 16)"]
+  EN --> FLT["Xét đèn hỏng (lưu đồ 17)"]
+  FLT --> CMD["Lấy hết lệnh dashboard trong hàng đợi<br/>(không chờ)"]
+  CMD --> TEL{"Đủ 5 s hoặc vừa có lệnh?"}
+  TEL -->|"Có"| SNAP["Đưa state + energy vào hộp gửi"]
   TEL -->|"Không"| SV
-  SNAP --> SV{"Đủ 10 phút?"}
+  SNAP --> SV{"Có số mới và đủ 10 phút?"}
   SV -->|"Có"| NVSS["Lưu điện năng vào NVS"]
   SV -->|"Không"| CHKT
-  NVSS --> CHKT["Đo thời gian chu kỳ:<br/>quá 200 ms thì ghi log"]
+  NVSS --> CHKT["Đo thời gian chu kỳ<br/>(giữ giá trị lớn nhất)"]
   CHKT --> L
-  class SEN,CLK,MODE,OUT,EN,TEL,SV,NVSS done
-  class ZR part
-  class CMDQ,MB,AGE,VERR,SNAP,CHKT todo`
+  class SEN,ZERO,CLK,VIS,DN,CF,MODE,PWM,NEWQ,ZR,EN,FLT,CMD,TEL,SNAP,SV,NVSS,CHKT done`
 },
 {
-  id: "che-do", status: "part",
-  title: "Chọn chế độ hoạt động",
-  desc: "Thứ tự ưu tiên: chỉnh tay (tự hết sau 10 phút) → chế độ theo giờ khi BH1750 hoặc camera lỗi → bình thường theo ngày/đêm. Chế độ theo giờ xét liên tục theo giờ hiện tại: lỗi lúc 15h thì đến 18h vẫn tự bật 100 %. Chưa có giờ thì sáng 100 % cho an toàn.",
+  id: "ngay-dem-chon", status: "done",
+  title: "Quyết định ngày / đêm",
+  desc: "Giờ SNTP được ưu tiên: ban ngày theo giờ thì luôn là ngày, BH1750 báo tối cũng không bật đèn (chỉ dùng để phát hiện cảm biến bị che, lưu đồ 10). Ngoài khung giờ đó, BH1750 còn tin được thì theo máy trạng thái của nó (lưu đồ 9), nên chiều tối trời sáng muộn đèn vẫn chờ BH1750. Không tin được BH1750 mà cũng chưa có giờ thì coi là đêm cho an toàn. Khung đêm (mặc định 18:00–06:00) và ép đêm chỉnh từ dashboard.",
   code: String.raw`flowchart TD
-  S(["Mỗi chu kỳ"]) --> MAN{"Đang chỉnh tay và<br/>chưa quá 10 phút?"}
-  MAN -->|"Có"| M1["Chế độ TAY:<br/>mỗi đèn theo lệnh dashboard"]
-  MAN -->|"Không"| ERR{"BH1750 lỗi hoặc<br/>camera / FOMO lỗi?"}
-  ERR -->|"Có"| SCH["Chế độ THEO GIỜ<br/>+ cảnh báo, nhắc lại mỗi 30 phút"]
-  SCH --> TQ{"Đã có giờ SNTP?"}
-  TQ -->|"Chưa"| A100["Tất cả 100 %"]
-  TQ -->|"Có"| WIN{"Giờ trong 18:00 → 06:00?"}
-  WIN -->|"Có"| B100["Tất cả 100 %"]
-  WIN -->|"Không"| OFF["Tắt hết, chỉ cảnh báo"]
-  ERR -->|"Không"| FN{"Dashboard ép đêm?"}
-  FN -->|"Có"| NIGHT
-  FN -->|"Không"| DN{"Ngày / đêm theo BH1750<br/>(lưu đồ 9)"}
-  DN -->|"Ngày"| DAY["Tắt hết, dừng FOMO"]
-  DN -->|"Đêm"| NIGHT["Ban đêm: nền 20 %<br/>+ luật zone (lưu đồ 11)"]
-  SCH -.->|"cảm biến / camera chạy lại"| REC["Thoát chế độ theo giờ,<br/>báo đã khôi phục"]
-  class MAN,M1,SCH,TQ,A100,WIN,B100,OFF,FN,DN,DAY done
-  class ERR,NIGHT part
-  class REC todo`
+  S(["Mỗi chu kỳ"]) --> FN{"Dashboard ép đêm?"}
+  FN -->|"Có"| N1["ĐÊM"]
+  FN -->|"Không"| DAYC{"Có giờ SNTP và giờ nằm<br/>ngoài khung đêm?"}
+  DAYC -->|"Có"| D1["NGÀY<br/>(BH1750 báo tối cũng tắt đèn)"]
+  DAYC -->|"Không"| TR{"BH1750 tin được?<br/>(đọc được, không bị nghi che)"}
+  TR -->|"Có"| SM["Theo máy trạng thái BH1750<br/>(lưu đồ 9)"]
+  TR -->|"Không"| TQ{"Có giờ SNTP?"}
+  TQ -->|"Chưa"| N2["ĐÊM (an toàn: sáng đèn)"]
+  TQ -->|"Có"| N3["ĐÊM (đang trong khung đêm)"]
+  class FN,N1,DAYC,D1,TR,SM,TQ,N2,N3 done`
 },
 {
   id: "ngay-dem", status: "done",
-  title: "Máy trạng thái ngày / đêm (BH1750)",
+  title: "Máy trạng thái ngày / đêm theo BH1750",
   desc: "Hai ngưỡng (LUX_NIGHT 30, LUX_DAY 100, chỉnh từ dashboard, cách nhau ≥ 20 lux) và thời gian giữ 10 s (ngoài đời 5–10 phút) chống đèn bật tắt liên tục. Lux nằm giữa hai ngưỡng thì giữ nguyên chế độ. BH1750 phải che không nhìn thấy LED của mô hình.",
   code: String.raw`stateDiagram-v2
   direction LR
@@ -346,78 +361,118 @@ const GROUPS = [
     Khởi động với lux giữa 2 ngưỡng:
     có giờ thì theo khung 18:00–06:00,
     chưa có giờ thì chọn đêm.
-    BH1750 lỗi: sang chế độ theo giờ.
+    BH1750 không đọc được: giữ kết quả cũ,
+    ngày/đêm theo giờ (lưu đồ 8).
   end note`
 },
 {
-  id: "nhan-dien", status: "part",
-  title: "Task nhận diện và theo dõi vật thể",
-  desc: "Task này chạy nhanh nhất có thể, không bị ràng buộc 200 ms; mỗi lần xong thì ghi kết quả kèm thời điểm vào hộp thư cho task điều khiển. FOMO chỉ trả tâm vật thể, đủ để biết zone. Ghép tâm của lần này với lần trước (gần nhất) để biết hướng đi và vật có đứng yên không. Ban ngày FOMO không chạy, chỉ tự kiểm tra camera 5 phút một lần để vẫn phát hiện lỗi trước khi trời tối.",
+  id: "bh1750-che", status: "done",
+  title: "Phát hiện BH1750 bị che / kẹt (lux_check.c)",
+  desc: "BH1750 vẫn trả lời I2C nhưng bị che (lá, bụi, băng dính) sẽ báo tối cả ngày, nên không thể chỉ kiểm tra \"đọc được hay không\". Đối chiếu với giờ SNTP: ban ngày mà tối liên tục 1 phút (giá trị demo, ngoài trời nên khoảng 30 phút) thì coi như lỗi. Đánh đổi: trời giông tối thật ban ngày thì đèn cũng tắt; muốn demo đêm giữa ban ngày thì dùng ép đêm.",
+  code: String.raw`stateDiagram-v2
+  direction LR
+  state "BH1750 tin cậy" as Tin
+  state "Nghi bị che / kẹt" as Nghi
+  [*] --> Tin
+  Tin --> Nghi: ban ngày theo giờ, lux dưới ngưỡng đêm liên tục 1 phút
+  Nghi --> Tin: lux trên ngưỡng ngày liên tục 10 s
+  note right of Nghi
+    Khi vào: gửi cảnh báo bh1750 lên dashboard,
+    state.sensor_error = bh1750_dark,
+    ngày/đêm chuyển sang theo giờ.
+    Khi ra: tự đóng cảnh báo.
+  end note`
+},
+{
+  id: "che-do", status: "done",
+  title: "Chọn chế độ và độ sáng 4 đèn",
+  desc: "Thứ tự ưu tiên: đang tìm đường → chỉnh tay (tự hết sau 10 phút không có lệnh) → camera/model lỗi → tự động. BH1750 lỗi không làm đổi chế độ đèn: camera vẫn chia zone bình thường, chỉ ngày/đêm chuyển sang theo giờ (lưu đồ 8). Chỉ khi camera/model lỗi mới sáng 100 % cả đêm vì không biết người ở đâu. Camera lỗi = khởi tạo lỗi, mất 5 khung liền, hoặc ban đêm 3 s không có kết quả mới (tính từ đầu đêm hoặc lần tìm đường gần nhất); dashboard thấy qua state.sensor_error = camera.",
   code: String.raw`flowchart TD
-  T(["Task nhận diện (lõi 1, chạy liên tục)"]) --> NQ{"Đang là đêm?"}
-  NQ -->|"Không"| SELFQ{"Đủ 5 phút từ lần<br/>tự kiểm tra camera?"}
-  SELFQ -->|"Có"| SELF["Chụp 1 ảnh + chạy FOMO 1 lần,<br/>báo kết quả kiểm tra"]
+  S(["Sau khi biết ngày / đêm"]) --> CALQ{"Đang tìm đường?"}
+  CALQ -->|"Có"| C100["Cả 4 đèn 100 %<br/>(cần sáng đều để chụp)"]
+  CALQ -->|"Không"| MAN{"Chỉnh tay và chưa quá<br/>10 phút từ lệnh cuối?"}
+  MAN -->|"Có"| M1["Chế độ TAY:<br/>mỗi đèn theo lệnh dashboard"]
+  MAN -->|"Không"| CAMQ{"Camera / model lỗi?"}
+  CAMQ -->|"Có"| SCH["Chế độ THEO GIỜ"]
+  SCH --> SN{"Đêm?"}
+  SN -->|"Có"| A100["Cả 4 đèn 100 %"]
+  SN -->|"Không"| OFF1["Tắt hết"]
+  CAMQ -->|"Không"| AUTO["Chế độ TỰ ĐỘNG"]
+  AUTO --> AN{"Đêm?"}
+  AN -->|"Không"| OFF2["Tắt hết, FOMO nghỉ"]
+  AN -->|"Có"| NIGHT["Nền base_pct (mặc định 20 %)<br/>+ đèn đang giữ sáng theo zone: 100 %<br/>(lưu đồ 13)"]
+  class CALQ,C100,MAN,M1,CAMQ,SCH,SN,A100,OFF1,AUTO,AN,OFF2,NIGHT done`
+},
+{
+  id: "nhan-dien", status: "done",
+  title: "Task vision: chụp ảnh và chạy FOMO",
+  desc: "Task này chỉ chụp và chạy FOMO, nhanh nhất có thể, không bị ràng buộc 200 ms; ghép zone, luật đèn và theo dõi xe dừng nằm trong task control. Ảnh được thu về 128×128 bằng cách bóp (squash) giống hệt lúc upload lên Edge Impulse để train. Inference ~210–250 ms, không đổi theo số vật. Ban ngày FOMO nghỉ, chỉ tự kiểm tra camera 5 phút một lần để vẫn phát hiện lỗi trước khi trời tối.",
+  code: String.raw`flowchart TD
+  T(["Task vision"]) --> ALIVE{"Task control đã chạy?"}
+  ALIVE -->|"Chưa"| W100["Chờ 100 ms"]
+  W100 --> T
+  ALIVE -->|"Rồi"| RQ{"Có lệnh tìm lại đường?"}
+  RQ -->|"Có"| RST["Đường = đang tìm,<br/>đặt lại số lần thử"]
+  RQ -->|"Không"| CQ
+  RST --> CQ{"Cần tìm đường và còn lượt?<br/>(lưu đồ 18)"}
+  CQ -->|"Có"| CAL["Tìm đường + 4 zone<br/>(lưu đồ 19)"]
+  CAL --> T
+  CQ -->|"Không"| NQ{"Đang là đêm?"}
+  NQ -->|"Không"| SELFQ{"Đủ 5 phút từ lần kiểm tra,<br/>hoặc đang xác nhận lỗi?"}
+  SELFQ -->|"Có"| ONE["Chạy 1 khung (như bên dưới)"]
   SELFQ -->|"Không"| SLP["Ngủ 1 s"]
-  SELF --> SLP
+  ONE --> SLP
   SLP --> T
-  NQ -->|"Có"| F["Chụp khung mới, đèn đang ≥ 20 %"]
-  F --> CROP["Cắt vùng đường<br/>(khung tìm lúc khởi động)"]
-  CROP --> RS["Thu nhỏ về input model<br/>(hiện tại 128×128 xám)"]
+  NQ -->|"Có"| F["Chụp khung xám 320×240"]
+  F --> RS["Thu về 128×128<br/>(squash, như lúc train)"]
   RS --> FOMO["FOMO int8 → danh sách tâm<br/>{loại, x, y, score}"]
-  FOMO --> SC{"score ≥ 0,5?"}
-  SC -->|"Không"| DROP["Bỏ tâm này"]
-  SC -->|"Có"| ROADQ{"Tâm nằm trên đường?"}
-  ROADQ -->|"Không"| DROP
-  ROADQ -->|"Có"| MATCH["Ghép với vật gần nhất<br/>của lần suy luận trước"]
-  MATCH --> NEWQ{"Ghép được?"}
-  NEWQ -->|"Không"| NEW["Vật mới: chưa biết hướng"]
-  NEWQ -->|"Có"| UPD["Cập nhật vị trí, so zone cũ"]
-  UPD --> DIR["Hướng = zone đổi K → K ± 1"]
-  UPD --> STOP{"Di chuyển dưới 1 ô lưới<br/>suốt 10 s?"}
-  STOP -->|"Có"| STV["Đánh dấu ĐỨNG YÊN<br/>(cảnh báo: lưu đồ 13)"]
-  STOP -->|"Không"| Z
-  NEW --> Z["Zone = khoảng x trên đường"]
-  DIR --> Z
-  STV --> Z
-  Z --> OUTL["Ghi vào hộp thư: danh sách vật<br/>(loại, zone, hướng, đứng yên) + thời điểm"]
-  OUTL --> T
-  class F,CROP,RS,FOMO,SC,ROADQ,Z part
-  class NQ,SELFQ,SELF,SLP,MATCH,NEWQ,NEW,UPD,DIR,STOP,STV,OUTL todo`
+  FOMO --> OKQ{"Chụp + suy luận được?"}
+  OKQ -->|"Không"| FAIL{"Mất 5 khung liền?"}
+  FAIL -->|"Có"| CERR["camera_ok = false<br/>→ control: chế độ theo giờ"]
+  FAIL -->|"Chưa"| WAIT2["Chờ 200 ms"]
+  CERR --> WAIT2
+  WAIT2 --> T
+  OKQ -->|"Có"| BOX["Ghi hộp thư: tâm vật + thời điểm<br/>+ fps (trung bình 2 s)"]
+  BOX --> AIQ{"Cảnh báo xe dừng<br/>đang chờ ảnh?"}
+  AIQ -->|"Có"| JPG["Nén JPEG khung này<br/>+ giữ danh sách vật của chính khung đó"]
+  AIQ -->|"Không"| T
+  JPG --> T
+  class ALIVE,W100,RQ,RST,CQ,CAL,NQ,SELFQ,ONE,SLP,F,RS,FOMO,OKQ,FAIL,CERR,WAIT2,BOX,AIQ,JPG done`
 },
 {
   id: "luat-zone", status: "part",
-  title: "Luật chiếu sáng ban đêm theo zone",
-  desc: "Người đi chậm, cần thấy xung quanh: sáng rộng và giữ lâu. Xe đi nhanh: sáng về phía trước và tắt nhanh. Chỉ 4 zone nên xe chỉ sáng thêm 1 zone phía trước. Zone ngoài 1..4 thì bỏ. Hiện app thử ai_stream dùng bản rút gọn: mọi vật sáng K−1..K+1, giữ 2 s.",
+  title: "Luật chiếu sáng ban đêm theo zone (zone_rule.c)",
+  desc: "Mỗi đèn có một hạn \"giữ sáng đến lúc\"; mỗi vật trên đường kéo dài hạn của 3 đèn quanh nó (hạn sau không bao giờ làm ngắn hạn trước). Nhờ vậy đèn không tắt ngay khi FOMO lỡ 1–2 khung. Người đi chậm nên giữ 5 s, xe đi nhanh giữ 2 s. Chỉ vật nằm trên mặt đường hoặc trên lề mới được tính, nền ngoài lề bị bỏ. Chưa có nhận biết hướng xe nên xe cũng sáng K−1..K+1.",
   code: String.raw`flowchart TD
-  S(["Ban đêm, có danh sách vật"]) --> INIT["Mặc định: 4 đèn nền 20 %"]
-  INIT --> EACH["Lấy vật kế tiếp (zone K)"]
-  EACH --> STQ{"Đứng yên quá 10 s?"}
-  STQ -->|"Có"| R1["Sáng K−1, K, K+1<br/>+ cảnh báo vật dừng"]
-  STQ -->|"Không"| TY{"Loại vật?"}
-  TY -->|"Người"| R2["Sáng K−1, K, K+1<br/>giữ 5 s sau khi rời"]
-  TY -->|"Xe"| DQ{"Đã biết hướng?"}
-  DQ -->|"Có"| R3["Sáng K và 1 zone phía trước<br/>giữ 2 s"]
-  DQ -->|"Chưa"| R4["Sáng K−1, K, K+1"]
-  R1 --> U["Gộp (hợp) các zone cần sáng"]
-  R2 --> U
-  R3 --> U
-  R4 --> U
-  U --> MORE{"Còn vật?"}
+  S(["Khung nhận diện mới, ban đêm"]) --> EACH["Lấy vật kế tiếp (tâm x, y)"]
+  EACH --> RF{"Đã tìm được đường?"}
+  RF -->|"Có"| ON{"Tâm nằm trên đường<br/>hoặc trên lề?"}
+  ON -->|"Không"| SKIP["Bỏ (nền ngoài lề)"]
+  ON -->|"Có"| ZK["Zone K theo 3 vạch chia<br/>(có tính phối cảnh)"]
+  RF -->|"Không"| ZQ["Zone K theo 1/4 chiều ngang ảnh"]
+  ZK --> TY{"Loại vật?"}
+  ZQ --> TY
+  TY -->|"Người"| R1["Đèn K−1, K, K+1:<br/>giữ sáng tới bây giờ + 5 s"]
+  TY -->|"Xe"| R2["Đèn K−1, K, K+1:<br/>giữ sáng tới bây giờ + 2 s"]
+  R1 --> MORE
+  R2 --> MORE
+  SKIP --> MORE{"Còn vật?"}
   MORE -->|"Còn"| EACH
-  MORE -->|"Hết"| OUTZ["Zone trong hợp: 100 %<br/>còn lại: 20 %"]
-  class INIT,EACH,R4,U,MORE,OUTZ part
-  class STQ,R1,TY,R2,DQ,R3 todo`
+  MORE -->|"Hết"| DUTY["Mỗi chu kỳ 200 ms: đèn còn hạn → 100 %,<br/>hết hạn → nền base_pct"]
+  R2 -.->|"chưa làm"| DIR["Xe đã biết hướng:<br/>sáng K + 1 zone phía trước"]
+  class EACH,RF,ON,SKIP,ZK,ZQ,TY,R1,R2,MORE,DUTY done
+  class DIR todo`
 },
 {
   id: "chuyen-muc", status: "done",
-  title: "Chuyển độ sáng: tăng nhanh, giảm từ từ",
-  desc: "Tăng trong ~200 ms để người/xe vừa vào zone là đủ sáng; giảm trong ~3 s để mắt không bị tối sầm và đèn không chớp khi FOMO lỡ 1–2 khung. Dùng fade phần cứng của LEDC nên CPU không phải tự tăng giảm. Áp dụng cho mọi thay đổi độ sáng.",
+  title: "Chuyển độ sáng: tăng nhanh, giảm từ từ (lamp_pwm.c)",
+  desc: "Tăng trong ~200 ms để người/xe vừa vào zone là đủ sáng; giảm trong ~3 s để mắt không bị tối sầm và đèn không chớp khi FOMO lỡ 1–2 khung. Dùng fade phần cứng của LEDC nên CPU không phải tự tăng giảm. fade_up_ms (tối đa 2 s) và fade_down_ms (tối đa 10 s) chỉnh được trên dashboard. Áp dụng cho mọi thay đổi độ sáng.",
   code: String.raw`flowchart TD
   S(["Mức đích mới cho đèn i"]) --> EQ{"Bằng mức đích hiện tại?"}
   EQ -->|"Có"| NOP(["Không làm gì"])
   EQ -->|"Không"| UP{"Tăng hay giảm?"}
   UP -->|"Tăng"| FD{"Đang tối dần?"}
-  FD -->|"Có"| STOPF["Dừng fade đang chạy,<br/>đọc duty hiện tại"]
+  FD -->|"Có"| STOPF["Dừng fade đang chạy,<br/>giữ duty đang có"]
   FD -->|"Không"| FU
   STOPF --> FU["Sáng dần từ mức hiện tại<br/>trong fade_up_ms (200 ms)"]
   UP -->|"Giảm"| FUQ{"Đang sáng dần?"}
@@ -426,133 +481,171 @@ const GROUPS = [
   WAIT --> FDN["Tối dần trong<br/>fade_down_ms (3000 ms)"]`
 },
 {
-  id: "canh-bao", status: "plan",
-  title: "Cảnh báo vật dừng lâu",
-  desc: "AI chỉ phát hiện có vật dừng; người quản lý xem ảnh và quyết định mức độ nghiêm trọng (AI khó phân biệt xe hỏng với xe dừng tạm). Cảnh báo và ảnh là tin retained nên mở dashboard lúc nào cũng thấy.",
-  code: String.raw`stateDiagram-v2
-  direction LR
-  state "Không có cảnh báo" as None
-  state "Cảnh báo đang mở" as Open
-  [*] --> None
-  None --> Open: vật đứng yên quá 10 s
-  Open --> None: vật rời đi
-  Open --> None: người quản lý bấm Đã xử lý
-  note right of Open
-    Khi mở: đèn K−1..K+1 sáng 100 %,
-    chụp toàn khung, vẽ khung quanh vật,
-    nén JPEG, gửi retained alert + alert/image.
-    Khi đóng: gửi alert rỗng, xoá ảnh retained.
-  end note`
+  id: "xe-dung", status: "done",
+  title: "Cảnh báo xe dừng lâu (stop_detect.c)",
+  desc: "Chỉ xét xe trên đường hoặc lề (người đứng chờ, nói chuyện không phải sự cố). Tâm FOMO rung khoảng 1 ô lưới (~20 px) nên \"đứng yên\" cho phép lệch 30 px khỏi điểm neo. FOMO thỉnh thoảng lỡ vật nên vết chỉ bị bỏ sau 3 s không thấy. AI chỉ phát hiện có xe dừng; người quản lý xem ảnh và quyết định. Mỗi lúc chỉ một cảnh báo (dùng chung ô với cảnh báo BH1750). Bật/tắt và thời gian (10 s – 30 phút) chỉnh trong Cài đặt của dashboard.",
+  code: String.raw`flowchart TD
+  S(["Khung mới, ban đêm, cảnh báo đang bật"]) --> SEL["Chỉ lấy XE có tâm trên đường hoặc lề"]
+  SEL --> MATCH["Ghép mỗi xe với vết gần nhất<br/>đi không quá 45 px từ khung trước"]
+  MATCH --> NEWQ{"Ghép được?"}
+  NEWQ -->|"Không"| NEW["Vết mới: neo = vị trí hiện tại,<br/>bắt đầu đếm đứng yên"]
+  NEWQ -->|"Có"| MOV{"Lệch khỏi neo quá 30 px?"}
+  MOV -->|"Có"| RE["Đặt neo mới, đếm lại từ 0"]
+  MOV -->|"Không"| KEEP["Vẫn đứng yên"]
+  NEW --> LOST
+  RE --> LOST
+  KEEP --> LOST{"Vết không thấy quá 3 s?"}
+  LOST -->|"Có"| DEL["Bỏ vết"]
+  LOST -->|"Không"| OPENQ
+  DEL --> OPENQ{"Đang có cảnh báo mở?"}
+  OPENQ -->|"Có"| GONE{"Xe đang báo đã đi<br/>hoặc đã mất?"}
+  GONE -->|"Có"| CLR["Đóng cảnh báo: xoá alert retained"]
+  GONE -->|"Không"| WAIT(["Chờ khung sau"])
+  CLR --> WAIT
+  OPENQ -->|"Không"| LONG{"Có vết đứng yên ≥ stop_time<br/>(mặc định 10 s), chưa bấm Đã xử lý?"}
+  LONG -->|"Không"| WAIT
+  LONG -->|"Có"| RAISE["Mở cảnh báo vat_dung:<br/>zone, x, y, score, đã dừng bao lâu"]
+  RAISE --> IMG["Task vision nén JPEG khung kế tiếp<br/>→ task network gửi alert/image"]
+  IMG --> OBJS["Gửi lại cảnh báo (cùng id) kèm mọi xe<br/>trong ảnh đó, đánh số trái → phải"]
+  OBJS --> WAIT
+  ACK(["Dashboard: Đã xử lý<br/>(cmd/alert_ack)"]) -.-> ACKD["Đóng cảnh báo,<br/>không báo lại vết đó"]
+  class SEL,MATCH,NEWQ,NEW,MOV,RE,KEEP,LOST,DEL,OPENQ,GONE,CLR,LONG,RAISE,IMG,OBJS,ACKD done`
 },
 {
   id: "dien-nang", status: "done",
   title: "Đo và tính điện năng từng bóng",
-  desc: "INA219 lấy trung bình 128 mẫu nên đọc đúng dòng trung bình dù đèn chạy PWM. % tiết kiệm so với việc để bóng sáng 100 % suốt đêm, dùng P100 đo thật của từng bóng (hiệu chỉnh: ép tay bóng i 100 % trong 10 s, lấy trung bình, lưu NVS). Ghi NVS 10 phút một lần vì flash có giới hạn số lần ghi.",
+  desc: "INA219 lấy trung bình 128 mẫu nên đọc đúng dòng trung bình dù đèn chạy PWM. Mỗi module INA219 lệch không vài trăm µA, nên lúc đèn tắt hẳn board tự học offset của từng kênh (chỉ ở RAM) rồi trừ đi. % tiết kiệm so với việc để bóng sáng 100 % suốt đêm, dùng P100 đo thật của từng bóng (tự đo khi bóng sáng ổn định 100 % trong 10 s). Ghi NVS 10 phút một lần và khi sang giờ/ngày mới vì flash có giới hạn số lần ghi.",
   code: String.raw`flowchart TD
-  S(["Mỗi lần đọc INA219 của bóng i"]) --> OK{"Đọc được?"}
-  OK -->|"Không"| ERR["Bỏ qua mẫu, báo<br/>bóng i không đo được"]
-  OK -->|"Có"| VI["V (bus), I (shunt 0,1 Ω,<br/>trung bình 128 mẫu)"]
-  VI --> P["P = V × I (mW)"]
-  P --> E["E += P × Δt<br/>(Δt đo bằng esp_timer)"]
+  S(["Mỗi 200 ms, bóng i"]) --> OK{"INA219 đọc được?"}
+  OK -->|"Không"| ERR["Bỏ mẫu, không cộng điện năng"]
+  OK -->|"Có"| VI["V bus, I (shunt 0,1 Ω,<br/>trung bình 128 mẫu)"]
+  VI --> ZQ{"Đèn lệnh 0 % và<br/>đứng yên ≥ 1 s?"}
+  ZQ -->|"Có"| LEARN["Học offset: TB 50 mẫu (~10 s),<br/>bỏ nếu I trên 1,5 mA (dòng thật)"]
+  ZQ -->|"Không"| CORR
+  LEARN --> CORR["I = I − offset, I sát 0 (dưới 0,15 mA) → 0<br/>P = V × I"]
+  CORR --> E["E += P × Δt (Δt đo bằng esp_timer)"]
   E --> T["Cộng vào: hôm nay, tổng,<br/>giờ hiện tại (lịch sử 24 giờ)"]
   T --> NQ{"Đang là đêm?"}
   NQ -->|"Có"| NE["Cộng E đêm và thời gian đêm"]
-  NQ -->|"Không"| SAV
-  NE --> SAV["% tiết kiệm = 1 − E_đêm / (P100 × t_đêm)"]
-  SAV --> MID{"Sang ngày mới 00:00?"}
-  MID -->|"Có"| RST["E hôm nay = 0"]
-  MID -->|"Không"| NV
-  RST --> NV{"Đủ 10 phút?"}
-  NV -->|"Có"| W["Lưu NVS"]`
+  NQ -->|"Không"| P100Q
+  NE --> P100Q{"Bóng 100 % ổn định đủ 10 s?"}
+  P100Q -->|"Có"| P100["P100 = TB công suất,<br/>lưu NVS nếu đổi quá 5 %"]
+  P100Q -->|"Không"| SAV
+  P100 --> SAV["% tiết kiệm = 1 − E_đêm / (P100 × t_đêm)"]
+  SAV --> NV{"Sang giờ / ngày mới,<br/>hoặc đủ 10 phút?"}
+  NV -->|"Có"| W["Lưu NVS<br/>(ngày mới: E hôm nay = 0)"]
+  class OK,ERR,VI,ZQ,LEARN,CORR,E,T,NQ,NE,P100Q,P100,SAV,NV,W done`
+},
+{
+  id: "den-hong", status: "done",
+  title: "Phát hiện đèn hỏng (lamp_fault.c)",
+  desc: "Xét trên board chứ không ở dashboard vì chỉ board biết đèn có đang fade không (đang fade thì số đo không khớp độ sáng) và P100 thật của từng bóng. Mất cảm biến, mất nguồn, chập thì xét bất kỳ lúc nào; còn lại chỉ xét khi đèn đứng yên ≥ 0,6 s. Độ sáng 1–9 % dòng quá nhỏ nên không kết luận. Lỗi phải kéo dài liên tục 1 phút mới báo (mã fault trong gói energy), bình thường lại 10 s thì gỡ.",
+  code: String.raw`flowchart TD
+  S(["Mỗi 200 ms, bóng i"]) --> SENQ{"INA219 trả lời?"}
+  SENQ -->|"Không"| F5["5 SENSOR: mất cảm biến"]
+  SENQ -->|"Có"| VQ{"V bus dưới 4 V?"}
+  VQ -->|"Có"| F4["4 NO_SUPPLY: mất nguồn đèn"]
+  VQ -->|"Không"| SQ{"I trên 100 mA?"}
+  SQ -->|"Có"| F2["2 SHORT: chập"]
+  SQ -->|"Không"| STQ{"Đứng yên ≥ 0,6 s?"}
+  STQ -->|"Không"| NV["Chưa kết luận,<br/>giữ nguyên bộ đếm"]
+  STQ -->|"Có"| DQ{"Độ sáng lệnh?"}
+  DQ -->|"0 %"| SOQ{"I trên 2 mA?"}
+  SOQ -->|"Có"| F3["3 STUCK_ON: ULN2003 kẹt"]
+  SOQ -->|"Không"| OK1["Bình thường"]
+  DQ -->|"1–9 %"| NV
+  DQ -->|"≥ 10 %"| OPQ{"P dưới 30 % × P100 × độ sáng?<br/>(chưa có P100: I dưới 0,5 mA)"}
+  OPQ -->|"Có"| F1["1 OPEN: hở mạch / cháy bóng"]
+  OPQ -->|"Không"| OK1
+  F1 --> CONF{"Cùng một lỗi liên tục 1 phút?"}
+  F2 --> CONF
+  F3 --> CONF
+  F4 --> CONF
+  F5 --> CONF
+  CONF -->|"Có"| REP["Báo mã lỗi lên dashboard"]
+  OK1 --> CLRQ{"Bình thường liên tục 10 s?"}
+  CLRQ -->|"Có"| CLRF["Gỡ lỗi (mã 0)"]
+  class SENQ,F5,VQ,F4,SQ,F2,STQ,NV,DQ,SOQ,F3,OK1,OPQ,F1,CONF,REP,CLRQ,CLRF done`
 },
 {
   id: "xac-dinh-zone", status: "part",
-  title: "Xác định vùng đường và 4 zone lúc khởi động (A → web → D)",
-  desc: "Camera nhìn xiên nên chia 4 phần đều theo chiều ngang ảnh sẽ lệch vị trí đèn. Thứ tự đã chốt: A (bật từng đèn, tìm vùng sáng) → không được thì hỏi người dùng chọn trên web → đến tối không ai trả lời thì D (4 đoạn bằng nhau ngoài thực tế, hợp lệ vì 4 đèn đặt cách đều). Không tìm được khung đường thì thử lại 3 lần, rồi dùng zone tạm và báo lên web / dashboard; quy trình chạy lại khi người dùng bấm “Hiệu chỉnh lại” (sau khi dọn đường, chỉnh camera) hoặc tự chạy lại đầu đêm kế tiếp. Hiện ai_stream mới có D, chạy một lần lúc khởi động.",
+  title: "Khi nào tìm đường và chia 4 zone",
+  desc: "Camera nhìn xiên nên chia 4 phần đều theo chiều ngang ảnh sẽ lệch vị trí đèn. Đang dùng cách D: 4 đoạn bằng nhau ngoài thực tế (hợp lệ vì 4 đèn đặt cách đều). Tìm đường chạy sau mỗi lần khởi động (cả ban ngày, nên đèn chớp sáng ~2 s), đầu mỗi đêm nếu chưa tìm được, và khi bấm \"Tìm lại đường\" trên dashboard. Mỗi lần thử đều gửi ảnh lên dashboard để kiểm tra bằng mắt. Cách A (bật từng đèn) và chọn vị trí đèn trên web chưa làm.",
   code: String.raw`flowchart TD
-  S(["Khởi động / đầu mỗi đêm /<br/>lệnh “Hiệu chỉnh lại”"]) --> CLR["Chờ đường trống<br/>(không có vật trong 5 s)"]
-  CLR --> MAX["Bật 4 đèn 100 %, chờ 1,5 s, chụp"]
-  MAX --> ROADQ{"Tìm được khung đường?<br/>(lưu đồ 16)"}
-  ROADQ -->|"Không"| RETRY{"Đã thử đủ 3 lần?"}
-  RETRY -->|"Chưa"| MAX
-  RETRY -->|"Rồi"| Q4["Zone tạm = 4 phần đều chiều ngang ảnh<br/>+ báo “chưa tìm được khung đường”<br/>lên web / dashboard"]
-  Q4 --> WAITR["Chờ lệnh “Hiệu chỉnh lại”<br/>hoặc đầu đêm kế tiếp"]
+  S(["Khởi động (cả ban ngày) /<br/>đầu đêm mà chưa có đường /<br/>lệnh Tìm lại đường"]) --> ATT["Lần thử k<br/>(tối đa 3, cách nhau 5 s)"]
+  ATT --> MAX["Bật cờ đang tìm:<br/>task control đặt 4 đèn 100 %"]
+  MAX --> WT["Chờ 1,5 s cho camera chỉnh phơi sáng,<br/>bỏ 3 khung cũ, chụp 1 khung"]
+  WT --> RZ["Tìm đường + lề + 4 zone<br/>(lưu đồ 19)"]
+  RZ --> SEND["Nén JPEG khung đó → dashboard:<br/>calib + calib/image (retained)"]
+  SEND --> FQ{"Tìm được?"}
+  FQ -->|"Có"| DONE(["Dùng 4 zone theo đường,<br/>đèn về bình thường"])
+  FQ -->|"Không"| RETRY{"Đã thử 3 lần?"}
+  RETRY -->|"Chưa"| ATT
+  RETRY -->|"Rồi"| Q4["Đường = not_found:<br/>zone = 4 phần đều chiều ngang ảnh"]
+  Q4 --> WAITR["Chờ đầu đêm kế tiếp<br/>hoặc lệnh Tìm lại đường"]
   WAITR -.-> S
-  ROADQ -->|"Có"| A["Cách A: bật từng đèn một,<br/>tìm vùng sáng của mỗi đèn"]
-  A --> AQ{"Thấy đủ 4 đèn?"}
-  AQ -->|"Có"| ZA["Ranh giới = điểm giữa<br/>tâm sáng 2 đèn kề nhau"]
-  AQ -->|"Không"| WEB["Báo lên web:<br/>người dùng bấm vị trí 4 đèn"]
-  WEB --> WQ{"Có trả lời trước tối?"}
-  WQ -->|"Có"| ZW["Zone theo điểm đã chọn<br/>(lưu NVS)"]
-  WQ -->|"Không"| D["Cách D: 4 đoạn bằng nhau ngoài thực tế<br/>(phối cảnh, điểm tụ)"]
-  ZA --> DONE(["Tắt đèn, dùng zone"])
-  ZW --> DONE
-  D --> DONE
-  Q4 -.->|"trong lúc chờ"| DONE
-  class MAX,ROADQ,D,DONE done
-  class Q4 part
-  class S,CLR,RETRY,WAITR,A,AQ,ZA,WEB,WQ,ZW todo`
+  FQ -.->|"chưa làm"| A["Cách A: bật từng đèn,<br/>tìm vùng sáng mỗi đèn"]
+  A -.-> WEB["Người dùng bấm vị trí<br/>4 đèn trên web"]
+  class S,ATT,MAX,WT,RZ,SEND,FQ,DONE,RETRY,Q4,WAITR done
+  class A,WEB todo`
 },
 {
   id: "tim-duong", status: "done",
-  title: "Tìm khung đường và chia zone cách D (road_zones.c)",
-  desc: "Ngưỡng sáng cố định không dùng được vì mặt đường dưới đèn sáng gần bằng lề; dùng cạnh sáng/tối theo từng cột. RANSAC thử mọi cặp điểm nên chịu được khoảng nửa số cột sai (giàn sắt, hai đầu đường). Phương án bất đắc dĩ khi chỉ thấy 1 mép đường (mép kia bị che hoặc ra ngoài khung): dùng tỷ lệ thật của mô hình, lề có đèn = 5/13 và lề không đèn = 6/13 bề rộng đường, để suy ra mép còn lại. Tỷ lệ đo trên ảnh lệch 10–17 % do phối cảnh nên chỉ dùng khi không còn cách khác. Hai mép gặp nhau ở điểm tụ V; V − x tỉ lệ với 1/độ sâu nên 4 đoạn bằng nhau ngoài thực tế là 4 bước đều của 1/(V − x).",
+  title: "Tìm khung đường, lề và chia zone cách D (road_zones.c)",
+  desc: "Ngưỡng sáng cố định không dùng được vì mặt đường dưới đèn sáng gần bằng lề; dùng cạnh sáng/tối theo từng cột. RANSAC thử mọi cặp điểm nên chịu được khoảng nửa số cột sai (giàn sắt, hai đầu đường). Sau khi có 2 mép đường, tìm mép ngoài của 2 lề để vật trên lề cũng được tính. Hai mép đường gặp nhau ở điểm tụ V; V − x tỉ lệ với 1/độ sâu nên 4 đoạn bằng nhau ngoài thực tế là 4 bước đều của 1/(V − x). Vạch chia zone là đường thẳng đứng nên phủ cả lề. Bản Python zone_calib.py và bản C được so bằng check_c_port.py. Phương án khi chỉ thấy 1 mép (suy mép kia từ tỷ lệ lề) chưa làm.",
   code: String.raw`flowchart TD
-  S(["Khung ảnh lúc 4 đèn 100 %"]) --> CE["Quét 160 cột: tìm cạnh<br/>sáng→tối và tối→sáng"]
+  S(["Khung ảnh lúc 4 đèn 100 %"]) --> CE["Quét 160 cột (cách 1 cột):<br/>tìm cạnh sáng→tối và tối→sáng"]
   CE --> SEED["Mỗi cột: khoảng rộng nhất tối hơn lề ≥ 25,<br/>không chứa dải sáng dài (lề)"]
-  SEED --> FIT{"RANSAC: khớp được mấy mép?<br/>(mỗi mép ≥ 20 cột)"}
-  FIT -->|"2 mép"| SNAP["3 vòng: dự đoán mép,<br/>bắt cạnh gần nhất ±6 px, khớp lại"]
-  FIT -->|"1 mép"| KERB["Tìm mép ngoài của lề<br/>cùng phía với mép đã thấy"]
-  KERB --> KQ{"Tìm được?"}
-  KQ -->|"Có"| RAT["Bề rộng đường = bề rộng lề ÷ tỷ lệ<br/>(lề có đèn 5/13, lề không đèn 6/13)<br/>→ suy ra mép đường còn lại"]
-  KQ -->|"Không"| FB(["Không tìm được đường<br/>→ thử lại (lưu đồ 15)"])
-  FIT -->|"0 mép"| FB
-  RAT --> SPAN
+  SEED --> FIT{"RANSAC + bình phương tối thiểu:<br/>khớp được cả 2 mép?"}
+  FIT -->|"Có"| SNAP["Vài vòng: dự đoán mép,<br/>bắt cạnh gần nhất, khớp lại"]
+  FIT -->|"Không"| FB(["Không tìm được đường<br/>→ thử lại (lưu đồ 18)"])
+  FIT -.->|"chỉ 1 mép, chưa làm"| RAT["Suy mép còn lại từ tỷ lệ lề<br/>(lề có đèn 5/13, lề không đèn 6/13)"]
   SNAP --> SPAN["Đoạn cột liền dài nhất → x_min, x_max"]
-  SPAN --> LE["Quét hàng: đầu đường bên trái<br/>(bước tối→sáng giữ ≥ 20 cột)"]
-  LE --> VP["Điểm tụ V = giao điểm 2 mép"]
+  SPAN --> LE["Quét hàng: đầu đường bên trái<br/>(bước tối → sáng)"]
+  LE --> KERB["Mép ngoài 2 lề: cạnh gần nhất cách mép<br/>đường 6–70 hàng, khớp đường thẳng<br/>(mỗi bên có thể thiếu)"]
+  KERB --> VP["Điểm tụ V = giao điểm 2 mép đường"]
   VP --> Z["4 zone: bước đều của 1 / (V − x)<br/>zone k ↔ đèn k, đèn 1 bên trái"]
-  Z --> OK(["Gửi khung đường cho luật đèn và web"])
-  class CE,SEED,SNAP,SPAN,LE,VP,Z done
-  class FIT part
-  class KERB,KQ,RAT todo`
+  Z --> OK(["Gửi khung đường cho luật đèn và dashboard"])
+  class CE,SEED,FIT,SNAP,FB,SPAN,LE,KERB,VP,Z,OK done
+  class RAT todo`
 },
 ]},
 
 { name: "C. Giao tiếp và dashboard", items: [
 {
-  id: "mqtt", status: "part",
+  id: "mqtt", status: "done",
   title: "Trao đổi MQTT: board, broker, dashboard",
-  desc: "Mọi topic có tiền tố streetlight/. Dùng retained để mở dashboard lúc nào cũng thấy ngay số liệu mới nhất (kể cả biểu đồ 24 giờ) mà không cần server lưu trữ. Board kiểm tra mọi lệnh, sai thì bỏ. Topic online là LWT: board mất kết nối thì broker tự báo offline.",
+  desc: "Mọi topic có tiền tố streetlight/. Dùng retained để mở dashboard lúc nào cũng thấy ngay cấu hình, biểu đồ 24 giờ, cảnh báo và ảnh tìm đường mới nhất mà không cần server lưu trữ. Board kiểm tra mọi lệnh, sai thì bỏ. Topic online là LWT: board mất kết nối thì broker tự báo offline. Gửi TLS nằm trong task network nên broker chậm không làm trễ đèn. Định dạng chi tiết: dashboard/src/lib/protocol.ts và sl_mqtt_codec.h (phải khớp nhau).",
   code: String.raw`sequenceDiagram
   autonumber
   participant N as ESP32 node
-  participant B as Broker (EMQX / HiveMQ)
+  participant B as Broker HiveMQ Cloud
   participant D as Dashboard
   N->>B: CONNECT TLS 8883, LWT online = offline
-  N->>B: online, config, energy/history, alert (retained)
+  N->>B: online, config, energy/history (retained)
   D->>B: CONNECT WebSocket TLS (tài khoản nhập trên trang)
-  D->>B: SUBSCRIBE online, state, config, energy, history, alert, alert/image
+  D->>B: SUBSCRIBE online, state, config, energy, history, alert, alert/image, calib, calib/image
   B-->>D: các tin retained mới nhất
-  loop Mỗi 5 s
-    N->>B: state (ngày/đêm, lux, chế độ, % 4 đèn, số người/xe, zone, fps)
-    N->>B: energy (V, I, P, Wh hôm nay / tổng, % tiết kiệm)
+  loop Mỗi 5 s và ngay sau mỗi lệnh
+    N->>B: state (ngày/đêm, lux, chế độ, % 4 đèn, số người/xe, zone, fps, lỗi cảm biến)
+    N->>B: energy (V, I, P, Wh hôm nay / tổng, % tiết kiệm, mã đèn hỏng)
     B-->>D: state, energy
   end
   loop Mỗi giờ
     N->>B: energy/history (24 giờ × 4 bóng)
   end
-  D->>B: cmd/mode, cmd/lamp, cmd/force_night
-  B-->>N: lệnh
-  N->>N: Kiểm tra lệnh (đèn 1–4, % 0–100), sai thì bỏ
-  Note over N,D: Chỉnh tay tự hết sau 10 phút
-  opt Chưa tìm được khung đường (lệnh mới đề xuất)
-    N->>B: state: road = not_found
-    B-->>D: hiện thông báo + nút “Hiệu chỉnh lại”
-    D->>B: cmd/recalibrate
-    B-->>N: cmd/recalibrate
-    N->>N: Chạy lại xác định khung đường + zone (lưu đồ 15)
+  opt Mỗi lần tìm đường
+    N->>B: calib (đường, lề, vạch chia) + calib/image JPEG
   end
+  opt Cảnh báo vat_dung / bh1750
+    N->>B: alert (retained), rồi alert/image JPEG nếu là xe dừng
+    D->>B: cmd/alert_ack (bấm Đã xử lý)
+    N->>B: xoá alert retained
+  end
+  D->>B: cmd/mode, cmd/lamp, cmd/force_night, cmd/config, cmd/recalibrate
+  B-->>N: lệnh
+  N->>N: Kiểm tra lệnh (đèn 1–4, % 0–100, cấu hình kẹp giới hạn), sai thì bỏ
+  Note over N,D: Chỉnh tay tự hết sau 10 phút không có lệnh
   opt Board mất kết nối
     B-->>D: online = offline (LWT)
   end`
@@ -560,7 +653,7 @@ const GROUPS = [
 {
   id: "cai-dat", status: "done",
   title: "Đổi cài đặt từ dashboard",
-  desc: "Dashboard luôn hiển thị theo streetlight/config (giá trị board đang dùng thật), không theo giá trị người dùng kéo. Chỉ gửi khi thả tay khỏi slider, board chỉ ghi NVS khi giá trị thật sự đổi, để đỡ tốn tin MQTT và đỡ mòn flash.",
+  desc: "Dashboard luôn hiển thị theo streetlight/config (giá trị board đang dùng thật), không theo giá trị người dùng kéo. Chỉ gửi khi thả tay khỏi slider, board chỉ ghi NVS khi giá trị thật sự đổi, để đỡ tốn tin MQTT và đỡ mòn flash. Các mục: ngưỡng lux ngày/đêm, thời gian sáng/tối dần, mức nền ban đêm (10–100 %), khung giờ đêm, bật/tắt và thời gian cảnh báo xe dừng (10 s – 30 phút).",
   code: String.raw`sequenceDiagram
   actor U as Người dùng
   participant D as Dashboard
@@ -573,6 +666,9 @@ const GROUPS = [
   alt Giá trị thật sự đổi
     N->>N: Lưu NVS
   end
+  opt Tắt cảnh báo xe dừng
+    N->>N: Đóng cảnh báo đang mở
+  end
   N->>B: config (retained, giá trị đang áp dụng)
   B-->>D: config
   D-->>U: Slider theo giá trị board dùng thật, báo nếu bị chỉnh lại`
@@ -580,7 +676,7 @@ const GROUPS = [
 {
   id: "dashboard", status: "done",
   title: "Luồng dùng dashboard",
-  desc: "Trang tĩnh trên GitHub Pages không chứa mật khẩu: người dùng nhập tài khoản MQTT khi mở trang. Có bộ giả lập board chạy ngay trong trình duyệt, gửi/nhận đúng các topic như board thật, để làm web khi chưa có phần cứng.",
+  desc: "Trang tĩnh trên GitHub Pages không chứa mật khẩu: người dùng nhập tài khoản MQTT khi mở trang. Có bộ giả lập board chạy ngay trong trình duyệt, gửi/nhận đúng các topic như board thật, để làm web khi chưa có phần cứng. Panel tìm đường vẽ đường, lề và vạch chia zone đè lên ảnh board gửi để kiểm tra bằng mắt.",
   code: String.raw`flowchart TD
   S(["Mở trang (GitHub Pages)"]) --> CH{"Chọn nguồn dữ liệu"}
   CH -->|"Giả lập"| SIM["Bộ giả lập board trong trình duyệt<br/>(cùng topic như board thật)"]
@@ -589,29 +685,28 @@ const GROUPS = [
   CON -->|"Không"| ERRM["Báo lỗi: sai tài khoản<br/>hoặc sai địa chỉ / cổng"]
   ERRM --> LOG
   CON -->|"Có"| SUB["Subscribe các topic streetlight/..."]
-  SUB --> SHOW["Hiển thị: trạng thái, lux, 4 đèn, điện năng,<br/>biểu đồ 24 giờ, cảnh báo + ảnh"]
+  SUB --> SHOW["Hiển thị: trạng thái, lux, 4 đèn, điện năng,<br/>đèn hỏng, biểu đồ 24 giờ, cảnh báo + ảnh"]
   SIM --> SHOW
   SHOW --> ACT["Người dùng: tự động / tay, kéo đèn,<br/>ép đêm, cài đặt, Đã xử lý"]
   ACT --> SEND["Gửi cmd/... (hoặc tới bộ giả lập)"]
   SEND --> SHOW
-  SHOW --> RQ{"Board báo chưa tìm được<br/>khung đường?"}
-  RQ -->|"Có"| RB["Hiện nút “Hiệu chỉnh lại”<br/>→ gửi cmd/recalibrate"]
+  SHOW --> CAL["Panel tìm đường: ảnh lúc tìm<br/>+ đường, lề, vạch chia zone"]
+  CAL --> RB["Nút Tìm lại đường<br/>→ gửi cmd/recalibrate"]
   RB --> SHOW
-  class CH,SIM,LOG,CON,ERRM,SUB,SHOW,ACT,SEND done
-  class RQ,RB todo`
+  class CH,SIM,LOG,CON,ERRM,SUB,SHOW,ACT,SEND,CAL,RB done`
 },
 {
   id: "web-ai", status: "done",
-  title: "Trang web của app thử ai_stream",
-  desc: "Trang lấy ảnh liên tục và vẽ hộp vật lên đúng khung ảnh đó (hộp nằm trong header của chính ảnh). Khung đường lấy từ /api/road sau khi board hiệu chỉnh xong.",
+  title: "Trang web của app ai_stream / chế độ ai-stream",
+  desc: "Dùng cho app thử ai_stream và chế độ ai-stream của streetlight-node (nhấn đôi IO0; board phát WiFi StreetLight-AI). Trang lấy ảnh liên tục và vẽ hộp vật lên đúng khung ảnh đó (hộp nằm trong header của chính ảnh). Khung đường lấy từ /api/road sau khi board tìm đường xong.",
   code: String.raw`sequenceDiagram
   participant W as Trình duyệt
-  participant S as ai_stream (192.168.4.1)
+  participant S as Board (192.168.4.1)
   W->>S: GET /
   S-->>W: index.html
   loop Tới khi hết pending (mỗi 1 s)
     W->>S: GET /api/road
-    S-->>W: pending / found (mép, đầu đường, 3 ranh giới) / not_found
+    S-->>W: pending / found (mép, lề, đầu đường, 3 vạch chia) / not_found
   end
   par Luồng ảnh
     loop Liên tục
@@ -626,29 +721,28 @@ const GROUPS = [
     end
   end
   W->>S: POST /api/lamp, /api/auto, /api/exposure
-  opt Đường not_found (đề xuất)
-    W->>S: POST /api/recalibrate (nút “Hiệu chỉnh lại”)
-    S-->>W: road = pending, hiệu chỉnh chạy lại
+  opt Nút Tìm lại đường
+    W->>S: POST /api/recalibrate
+    S-->>W: road = pending, tìm đường chạy lại
   end`
 },
 ]},
 
 { name: "D. Dữ liệu và huấn luyện AI", items: [
 {
-  id: "quy-trinh-ai", status: "part",
+  id: "quy-trinh-ai", status: "done",
   title: "Quy trình dữ liệu AI: từ ảnh tới board",
-  desc: "Ảnh thu bằng chính camera lắp ở vị trí demo, cùng định dạng và cách cắt như firmware, để ảnh lúc chạy giống ảnh lúc train. Ưu tiên ảnh tối (đèn 20 %, một vài đèn 100 %) vì hệ thống chỉ nhận diện ban đêm.",
+  desc: "Ảnh thu bằng chính camera lắp ở vị trí demo, cùng định dạng (xám 320×240) như firmware, để ảnh lúc chạy giống ảnh lúc train. Ưu tiên ảnh tối (đèn 20 %, một vài đèn 100 %) vì hệ thống chỉ nhận diện ban đêm. Kết quả (plans/eval.md): F1 0,90 sau int8 (không giảm so với float), 3,8 khung/s trên board.",
   code: String.raw`flowchart LR
   B["Board thu_dataset<br/>ảnh xám 320×240"] -->|"WiFi"| P["pull_dataset.py<br/>30 tổ hợp đèn mỗi vị trí<br/>+ index.csv"]
   P --> C["convert_raw.py<br/>PGM → PNG"]
   C --> SP["split_dataset.py<br/>chia THEO VỊ TRÍ"]
-  SP --> T["Train FOMO int8<br/>Kaggle / Edge Impulse"]
+  SP --> T["Train FOMO int8, input 128×128<br/>Edge Impulse (notebook ml/vision)"]
   T --> X["Xuất C++ library"]
   X --> AS["ai_stream<br/>thử trên board"]
-  AS -.->|"bước sau"| N["streetlight-node"]
-  T --> EV["Đánh giá: precision, recall,<br/>đúng zone, fps, độ trễ"]
-  class B,P,C,SP,T,X,AS done
-  class N,EV todo`
+  AS --> N["streetlight-node"]
+  T --> EV["Đánh giá (plans/eval.md):<br/>F1, fps, độ trễ, đúng zone"]
+  class B,P,C,SP,T,X,AS,N,EV done`
 },
 {
   id: "thu-dataset", status: "done",
